@@ -1,5 +1,6 @@
 datasets
 peft
+pytest
 torch
 transformers
 wandb

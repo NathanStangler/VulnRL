@@ -13,4 +13,13 @@ git clone git@github.com:NathanStangler/VulnRL.git
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
+sudo apt update && sudo apt install -y clang clang-tidy lld clang-tools
+```
+
+## Test
+
+Run test cases:
+
+```bash
+pytest
 ```
