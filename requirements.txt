@@ -1,6 +1,9 @@
 datasets
+llama-index
 peft
 pytest
 torch
 transformers
+tree_sitter
+tree_sitter_languages
 wandb
