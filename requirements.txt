@@ -1,3 +1,5 @@
+accelerate
+bitsandbytes
 datasets
 llama-index
 peft
@@ -6,4 +8,5 @@ torch
 transformers
 tree_sitter
 tree_sitter_languages
+tqdm
 wandb

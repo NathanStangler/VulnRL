@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from codeChunker import build_chunks
+from code_chunker import build_chunks
 from transformers import AutoTokenizer
 
 def test_add_chunks():
