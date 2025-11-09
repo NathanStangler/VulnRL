@@ -9,7 +9,7 @@ def _get_files(root):
             for dirpath, _, filenames in os.walk(root)
             for name in filenames if name.endswith(extensions)]
 
-def build_chunks(root, tokenizer, max_tokens=1000, overlap=100):
+def build_chunks(root, tokenizer, max_tokens=1024, overlap=128):
     files = _get_files(root)
     docs = [doc for f in files for doc in SimpleDirectoryReader(input_files=[str(f)]).load_data()]
     token_splitter = TokenTextSplitter(tokenizer=tokenizer, chunk_size=max_tokens, chunk_overlap=overlap)
