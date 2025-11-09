@@ -4,9 +4,10 @@ datasets
 llama-index
 peft
 pytest
+scikit-learn
 torch
 transformers
 tree_sitter
-tree_sitter_languages
+tree_sitter_language_pack
 tqdm
 wandb
