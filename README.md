@@ -45,3 +45,32 @@ squeue --me
 ```bash
 scancel <JOBID>
 ```
+
+## Usage
+
+Run the full training + evaluation pipeline:
+
+```bash
+python train_and_evaluate.py
+```
+
+This will:
+- Load and tokenize the vulnerability dataset
+- Fine-tune a code language model (default: microsoft/phi-2)
+- Evaluate test accuracy
+- Run compiler feedback on example C++ code
+- Log results to ./logs/summary.json and feedback_logs.jsonl
+
+## API Server
+
+1. Launch the FastAPI vulnerability analysis endpoint:
+
+```bash
+python api.py
+```
+
+2. Then send a .cpp file for analysis:
+
+```bash
+curl -X POST -F "file=@test.cpp" http://localhost:8080/analyze/
+```
