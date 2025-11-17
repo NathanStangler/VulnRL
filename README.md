@@ -23,3 +23,25 @@ Run test cases:
 ```bash
 pytest
 ```
+
+## MSI
+
+Modify `script.sbatch` to have needed gpu, memory, and time.
+
+- Queue job
+
+```bash
+sbatch script.sbatch
+```
+
+- Check queue status
+
+```bash
+squeue --me
+```
+
+- Cancel queued job
+
+```bash
+scancel <JOBID>
+```

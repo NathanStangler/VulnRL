@@ -30,5 +30,8 @@ checkpoints/
 *.pt
 *.ckpt
 
+# Logs
+logs/
+
 # VS Code
 .vscode/
