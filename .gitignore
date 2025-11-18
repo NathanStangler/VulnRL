@@ -22,16 +22,21 @@ ipython_config.py
 
 # Weights and Biases
 wandb/
+artifacts/
 *.wandb
 
 # Weights
+finetuned_model/
 checkpoints/
 *.pth
 *.pt
 *.ckpt
 
 # Logs
+run_logs/
 logs/
+feedback_logs.jsonl
+sample_cpp/
 
 # VS Code
 .vscode/

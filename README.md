@@ -16,50 +16,61 @@ pip install -r requirements.txt
 sudo apt update && sudo apt install -y clang clang-tidy lld clang-tools
 ```
 
-## Test
-
-Run test cases:
-
-```bash
-pytest
-```
-
 ## MSI
 
-Modify `script.sbatch` to have needed gpu, memory, and time.
+### Setting resouces
+Modify in script.sbatch:
+```
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=20G
+#SBATCH --time=1:00:00
+```
 
-- Queue job
+### Queue default finetune job
 
 ```bash
 sbatch script.sbatch
 ```
 
-- Check queue status
+### Configure job
+
+Use --export to pass variables
+
+Variables:
+- RUN_MODE: finetune | evaluate
+- MODEL_NAME: HuggingFace model
+- OUTPUT_DIR: output path
+- LOG_DIR: log path
+- EPOCHS, TRAIN_BATCH_SIZE, EVAL_BATCH_SIZE, LR
+- USE_LORA: true | false
+- LOAD_IN_4BIT: true | false
+- REPORT_TO: wandb | none
+
+### Examples
+
+Finetune custom config:
+```bash
+sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=3,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=1e-5,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
+```
+
+Evaluate model:
+```bash
+sbatch --export=RUN_MODE=evaluate,OUTPUT_DIR=./finetuned_model script.sbatch
+```
+
+### Manage jobs
+
+Check queue status
 
 ```bash
 squeue --me
 ```
 
-- Cancel queued job
+Cancel queued job
 
 ```bash
 scancel <JOBID>
 ```
-
-## Usage
-
-Run the full training + evaluation pipeline:
-
-```bash
-python train_and_evaluate.py
-```
-
-This will:
-- Load and tokenize the vulnerability dataset
-- Fine-tune a code language model (default: microsoft/phi-2)
-- Evaluate test accuracy
-- Run compiler feedback on example C++ code
-- Log results to ./logs/summary.json and feedback_logs.jsonl
 
 ## API Server
 
@@ -73,4 +84,12 @@ python api.py
 
 ```bash
 curl -X POST -F "file=@test.cpp" http://localhost:8080/analyze/
+```
+
+## Test
+
+Run test cases:
+
+```bash
+pytest
 ```
