@@ -49,3 +49,12 @@ if [ "$RUN_MODE" = "evaluate" ]; then
     --eval_batch_size "$EVAL_BATCH_SIZE" \
     --report_to "none"
 fi
+
+if [ "$RUN_MODE" = "performance" ]; then
+  python performance.py \
+    --model_dir "$OUTPUT_DIR" \
+    --log_dir "$LOG_DIR" \
+    --max_new_tokens 1024 \
+    --chunk_max_tokens 1024 \
+    --chunk_overlap 128
+fi

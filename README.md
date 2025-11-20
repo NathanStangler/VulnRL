@@ -37,7 +37,7 @@ sbatch script.sbatch
 Use --export to pass variables
 
 Variables:
-- RUN_MODE: finetune | evaluate
+- RUN_MODE: finetune | evaluate | performance
 - MODEL_NAME: HuggingFace model
 - OUTPUT_DIR: output path
 - LOG_DIR: log path
@@ -56,6 +56,11 @@ sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EP
 Evaluate model:
 ```bash
 sbatch --export=RUN_MODE=evaluate,OUTPUT_DIR=./finetuned_model script.sbatch
+```
+
+Performance evaluation:
+```bash
+sbatch --export=RUN_MODE=performance,OUTPUT_DIR=./finetuned_model script.sbatch
 ```
 
 ### Manage jobs

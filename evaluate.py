@@ -76,7 +76,7 @@ def main():
     print(f"[Reward] Compiler feedback reward: {reward}")
 
     summary = {
-        "model": model_path,
+        "model": args.model_dir,
         "test_samples": len(test_dataset),
         "eval_metrics": eval_results,
         "last_feedback_reward": reward,
