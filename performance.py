@@ -8,17 +8,18 @@ import tempfile
 import tqdm
 import json
 import os
+import difflib
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--model_dir", default="./finetuned_model")
     p.add_argument("--log_dir", default="./logs")
-    p.add_argument("--max_new_tokens", type=int, default=1024)
+    p.add_argument("--max_new_tokens", type=int, default=64)
     p.add_argument("--chunk_max_tokens", type=int, default=1024)
     p.add_argument("--chunk_overlap", type=int, default=128)
     return p.parse_args()
 
-def get_prediction(prompt, tokenizer, model, max_new_tokens=1024):
+def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
     messages = [
         {"role": "system", "content": "Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: Improper Input Validation, Improper Limitation of a Pathname to a Restricted Directory (“Path Traversal”), Improper Neutralization of Special Elements used in an OS Command (“OS Command Injection”), Improper Neutralization of Input During Web Page Generation (“Cross-site Scripting”), Improper Neutralization of Special Elements used in an SQL Command (“SQL Injection”), Improper Control of Generation of Code (“Code Injection”), Improper Output Neutralization for Logs, Integer Overflow or Wraparound, NULL Pointer Dereference, Deserialization of Untrusted Data, URL Redirection to Untrusted Site (“Open Redirect”), Improper Restriction of XML External Entity Reference, Out-of-bounds Write, safe. Only respond with the classification."},
         {"role": "user", "content": prompt}
@@ -33,21 +34,67 @@ def get_prediction(prompt, tokenizer, model, max_new_tokens=1024):
 
     generated_ids = model.generate(
         **model_inputs,
-        max_new_tokens=max_new_tokens
+        max_new_tokens=max_new_tokens,
+        do_sample=False
     )
     generated_ids = [
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
 
-    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    output = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return clean_label(output)
 
-def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=128, max_new_tokens=1024):
+def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=128, max_new_tokens=64):
     with tempfile.TemporaryDirectory() as directory:
         with open(os.path.join(directory, "main.cpp"), "w") as f:
             f.write(code)
         chunks = build_chunks(directory, tokenizer.encode, max_tokens=chunk_max_tokens, overlap=overlap)
-        responses = [get_prediction(chunk["code"], tokenizer, model, max_new_tokens=max_new_tokens).strip().lower() for chunk in chunks]
-        return Counter(responses).most_common(1)[0][0]
+        responses = [get_prediction(chunk["code"], tokenizer, model, max_new_tokens=max_new_tokens) for chunk in chunks]
+        most_common = Counter(responses).most_common(1)
+        return most_common[0][0] if most_common else "unsafe"
+
+ALLOWED_LABELS = [
+    "improper input validation",
+    "path traversal",
+    "os command injection",
+    "cross-site scripting",
+    "sql injection",
+    "code injection",
+    "improper output neutralization for logs",
+    "integer overflow or wraparound",
+    "null pointer dereference",
+    "deserialization of untrusted data",
+    "open redirect",
+    "improper restriction of xml external entity reference",
+    "out-of-bounds write",
+    "safe"
+]
+
+def clean_label(text):
+    s = text.strip().lower()
+    if s in ALLOWED_LABELS:
+        return s
+
+    for label in ALLOWED_LABELS:
+        if label in s:
+            return label
+
+    for line in s.splitlines():
+        l = line.strip()
+        if l in ALLOWED_LABELS:
+            return l
+        for label in ALLOWED_LABELS:
+            if label in l:
+                return label
+
+    close = difflib.get_close_matches(s, ALLOWED_LABELS, n=1, cutoff=0.6)
+    if close:
+        return close[0]
+
+    if "safe" in s:
+        return "safe"
+
+    return "unsafe"
 
 def to_binary(label):
     return "safe" if label == "safe" else "unsafe"
