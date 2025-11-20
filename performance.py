@@ -23,7 +23,6 @@ def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
     messages = [
         {"role": "system", "content": "Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: Improper Input Validation, Improper Limitation of a Pathname to a Restricted Directory (“Path Traversal”), Improper Neutralization of Special Elements used in an OS Command (“OS Command Injection”), Improper Neutralization of Input During Web Page Generation (“Cross-site Scripting”), Improper Neutralization of Special Elements used in an SQL Command (“SQL Injection”), Improper Control of Generation of Code (“Code Injection”), Improper Output Neutralization for Logs, Integer Overflow or Wraparound, NULL Pointer Dereference, Deserialization of Untrusted Data, URL Redirection to Untrusted Site (“Open Redirect”), Improper Restriction of XML External Entity Reference, Out-of-bounds Write, safe. Only respond with the classification."},
         {"role": "user", "content": prompt}
-
     ]
     text = tokenizer.apply_chat_template(
         messages,
