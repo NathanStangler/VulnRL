@@ -13,6 +13,7 @@ LOG_DIR=${LOG_DIR:-"./logs"}
 EPOCHS=${EPOCHS:-1}
 TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-4}
 EVAL_BATCH_SIZE=${EVAL_BATCH_SIZE:-4}
+GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS:-8}
 LR=${LR:-2e-5}
 USE_LORA=${USE_LORA:-"true"}
 LOAD_IN_4BIT=${LOAD_IN_4BIT:-"true"}
@@ -26,7 +27,7 @@ fi
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-export PYTORCH_ALLOC_CONF=expandable_segments:True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 if [ -z "$RUN_MODE" ] || [ "$RUN_MODE" = "finetune" ]; then
   python finetune.py \
@@ -36,6 +37,7 @@ if [ -z "$RUN_MODE" ] || [ "$RUN_MODE" = "finetune" ]; then
     --epochs "$EPOCHS" \
     --train_batch_size "$TRAIN_BATCH_SIZE" \
     --eval_batch_size "$EVAL_BATCH_SIZE" \
+    --gradient_accumulation_steps "$GRADIENT_ACCUMULATION_STEPS" \
     --lr "$LR" \
     $( [ "$USE_LORA" = "true" ] && echo --use_lora ) \
     $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit ) \
