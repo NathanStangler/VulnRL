@@ -41,7 +41,7 @@ Variables:
 - MODEL_NAME: HuggingFace model
 - OUTPUT_DIR: output path
 - LOG_DIR: log path
-- EPOCHS, TRAIN_BATCH_SIZE, EVAL_BATCH_SIZE, LR
+- EPOCHS, TRAIN_BATCH_SIZE, EVAL_BATCH_SIZE, GRADIENT_ACCUMULATION_STEPS, LR
 - USE_LORA: true | false
 - LOAD_IN_4BIT: true | false
 - REPORT_TO: wandb | none

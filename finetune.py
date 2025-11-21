@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from data_processing import get_dataset, tokenize_dataset
 import argparse
 import torch
@@ -13,6 +13,7 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--train_batch_size", type=int, default=4)
     p.add_argument("--eval_batch_size", type=int, default=4)
+    p.add_argument("--gradient_accumulation_steps", type=int, default=8)
     p.add_argument("--lr", type=float, default=2e-5)
     p.add_argument("--use_lora", action="store_true")
     p.add_argument("--lora_r", type=int, default=16)
@@ -45,15 +46,26 @@ def main():
     validation_dataset = tokenize_dataset(validation, tokenizer)
 
     print("[4] Loading base model...")
-    quantization_config = BitsAndBytesConfig(load_in_4bit=args.load_in_4bit)
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=args.load_in_4bit,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+    )
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         quantization_config=quantization_config if args.load_in_4bit else None,
         device_map="auto",
     )
 
+    if args.load_in_4bit:
+        print("[4.1] Preparing model for 4-bit training...")
+        model = prepare_model_for_kbit_training(model)
+
+    model.gradient_checkpointing_enable()
+    model.config.use_cache = False
+
     if args.use_lora:
-        print("[4.1] Applying LoRA...")
+        print("[4.2] Applying LoRA...")
         lora_config = LoraConfig(
             r=args.lora_r,
             lora_alpha=args.lora_alpha,
@@ -70,6 +82,7 @@ def main():
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.train_batch_size,
         per_device_eval_batch_size=args.eval_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         eval_strategy="epoch",
         save_strategy="epoch",
         learning_rate=args.lr,
@@ -79,6 +92,7 @@ def main():
         metric_for_best_model="loss",
         greater_is_better=False,
         report_to=args.report_to,
+        fp16=args.load_in_4bit,
     )
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)

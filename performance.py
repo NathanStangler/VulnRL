@@ -5,6 +5,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from collections import Counter
 import argparse
 import tempfile
+import torch
 import tqdm
 import json
 import os
@@ -114,7 +115,8 @@ def main():
     test_dataset = tokenize_dataset(test, tokenizer)
 
     print("[4] Loading model...")
-    model = AutoModelForCausalLM.from_pretrained(args.model_dir)
+    model = AutoModelForCausalLM.from_pretrained(args.model_dir, device_map="auto")
+    model.eval()
 
     print("[5] Evaluating truncated predictions...")
     y_true = []
