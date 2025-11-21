@@ -1,6 +1,6 @@
 from code_chunker import build_chunks
 from data_processing import get_dataset, tokenize_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from collections import Counter
 import argparse
@@ -18,6 +18,7 @@ def parse_args():
     p.add_argument("--max_new_tokens", type=int, default=64)
     p.add_argument("--chunk_max_tokens", type=int, default=1024)
     p.add_argument("--chunk_overlap", type=int, default=128)
+    p.add_argument("--load_in_4bit", action="store_true")
     return p.parse_args()
 
 def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
@@ -115,7 +116,16 @@ def main():
     test_dataset = tokenize_dataset(test, tokenizer)
 
     print("[4] Loading model...")
-    model = AutoModelForCausalLM.from_pretrained(args.model_dir, device_map="auto")
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=args.load_in_4bit,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_dir,
+        quantization_config=quantization_config if args.load_in_4bit else None,
+        device_map="auto",
+    )
     model.eval()
 
     print("[5] Evaluating truncated predictions...")

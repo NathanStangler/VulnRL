@@ -58,5 +58,6 @@ if [ "$RUN_MODE" = "performance" ]; then
     --log_dir "$LOG_DIR" \
     --max_new_tokens 1024 \
     --chunk_max_tokens 1024 \
-    --chunk_overlap 128
+    --chunk_overlap 128 \
+    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit )
 fi
