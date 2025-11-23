@@ -1,6 +1,6 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from data_processing import get_dataset, tokenize_dataset
+from data_processing import process_lemon42, get_split, tokenize_dataset
 import argparse
 import torch
 import os
@@ -34,7 +34,8 @@ def main():
         os.environ["WANDB_LOG_MODEL"] = "end"
 
     print("[1] Loading dataset...")
-    train, validation, _ = get_dataset()
+    dataset = process_lemon42()
+    train, validation, _ = get_split(dataset)
     print(f"Train: {len(train)}, Validation: {len(validation)}")
 
     print("[2] Loading tokenizer...")

@@ -1,5 +1,5 @@
 from code_chunker import build_chunks
-from data_processing import get_dataset, tokenize_dataset
+from data_processing import process_lemon42, process_megavul, process_secvuleval, get_split
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from collections import Counter
@@ -23,7 +23,7 @@ def parse_args():
 
 def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
     messages = [
-        {"role": "system", "content": "Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: Improper Input Validation, Improper Limitation of a Pathname to a Restricted Directory (“Path Traversal”), Improper Neutralization of Special Elements used in an OS Command (“OS Command Injection”), Improper Neutralization of Input During Web Page Generation (“Cross-site Scripting”), Improper Neutralization of Special Elements used in an SQL Command (“SQL Injection”), Improper Control of Generation of Code (“Code Injection”), Improper Output Neutralization for Logs, Integer Overflow or Wraparound, NULL Pointer Dereference, Deserialization of Untrusted Data, URL Redirection to Untrusted Site (“Open Redirect”), Improper Restriction of XML External Entity Reference, Out-of-bounds Write, safe. Only respond with the classification."},
+        {"role": "system", "content": "Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: Improper Input Validation, Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal'), Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection'), Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting'), Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection'), Improper Control of Generation of Code ('Code Injection'), Out-of-bounds Read, Integer Overflow or Wraparound, Exposure of Sensitive Information to an Unauthorized Actor, Improper Privilege Management, Improper Authentication, Missing Authentication for Critical Function, Cross-Site Request Forgery (CSRF), Uncontrolled Resource Consumption, Use After Free, Unrestricted Upload of File with Dangerous Type, NULL Pointer Dereference, Deserialization of Untrusted Data, Out-of-bounds Write, Use of Hard-coded Credentials, Missing Authorization, Incorrect Authorization, Server-Side Request Forgery (SSRF), Improper Restriction of Operations within the Bounds of a Memory Buffer, Improper Neutralization of Special Elements used in a Command ('Command Injection'), safe. Only respond with the classification."},
         {"role": "user", "content": prompt}
     ]
     text = tokenizer.apply_chat_template(
@@ -56,18 +56,30 @@ def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=1
 
 ALLOWED_LABELS = [
     "improper input validation",
-    "path traversal",
-    "os command injection",
-    "cross-site scripting",
-    "sql injection",
-    "code injection",
-    "improper output neutralization for logs",
+    "improper limitation of a pathname to a restricted directory ('path traversal')",
+    "improper neutralization of special elements used in an os command ('os command injection')",
+    "improper neutralization of input during web page generation ('cross-site scripting')",
+    "improper neutralization of special elements used in an sql command ('sql injection')",
+    "improper control of generation of code ('code injection')",
+    "out-of-bounds read",
     "integer overflow or wraparound",
+    "exposure of sensitive information to an unauthorized actor",
+    "improper privilege management",
+    "improper authentication",
+    "missing authentication for critical function",
+    "cross-site request forgery (csrf)",
+    "uncontrolled resource consumption",
+    "use after free",
+    "unrestricted upload of file with dangerous type",
     "null pointer dereference",
     "deserialization of untrusted data",
-    "open redirect",
-    "improper restriction of xml external entity reference",
     "out-of-bounds write",
+    "use of hard-coded credentials",
+    "missing authorization",
+    "incorrect authorization",
+    "server-side request forgery (ssrf)",
+    "improper restriction of operations within the bounds of a memory buffer",
+    "improper neutralization of special elements used in a command ('command injection')",
     "safe"
 ]
 
@@ -104,18 +116,18 @@ def main():
     args = parse_args()
     os.makedirs(args.log_dir, exist_ok=True)
 
-    print("[1] Loading test dataset...")
-    _, _, test = get_dataset()
-    print(f"Test: {len(test)}")
+    print("[1] Processing datasets...")
+    datasets = [
+        ("lemon42", process_lemon42),
+        ("megavul", process_megavul),
+        ("secvuleval", process_secvuleval),
+    ]
 
     print("[2] Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir, use_fast=True)
     tokenizer.pad_token = tokenizer.eos_token
 
-    print("[3] Tokenizing dataset...")
-    test_dataset = tokenize_dataset(test, tokenizer)
-
-    print("[4] Loading model...")
+    print("[3] Loading model...")
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=args.load_in_4bit,
         bnb_4bit_compute_dtype=torch.float16,
@@ -128,100 +140,110 @@ def main():
     )
     model.eval()
 
-    print("[5] Evaluating truncated predictions...")
-    y_true = []
-    y_pred = []
-    for sample in tqdm.tqdm(test_dataset):
-        prompt = sample["code"]
-        label = sample["output"].strip().lower()
-        prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens).strip().lower()
-        y_true.append(label)
-        y_pred.append(prediction)
+    def evaluate_dataset(name, test_dataset):
+        print(f"Evaluating truncated predictions for {name}...")
+        y_true = []
+        y_pred = []
+        for sample in tqdm.tqdm(test_dataset):
+            prompt = sample["code"]
+            label = sample["output"].strip().lower()
+            prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens).strip().lower()
+            y_true.append(label)
+            y_pred.append(prediction)
 
-    accuracy = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
-    recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
-    f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+        accuracy = accuracy_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
+        recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
+        f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
 
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
+        print(f"Accuracy: {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"F1 Score: {f1:.4f}")
 
-    y_true_binary = [to_binary(label) for label in y_true]
-    y_pred_binary = [to_binary(pred) for pred in y_pred]
+        y_true_binary = [to_binary(label) for label in y_true]
+        y_pred_binary = [to_binary(pred) for pred in y_pred]
 
-    binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
-    binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-    binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-    binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
+        binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
 
-    print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
-    print(f"Binary Precision (safe): {binary_precision:.4f}")
-    print(f"Binary Recall (safe): {binary_recall:.4f}")
-    print(f"Binary F1 Score (safe): {binary_f1:.4f}")
+        print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
+        print(f"Binary Precision (safe): {binary_precision:.4f}")
+        print(f"Binary Recall (safe): {binary_recall:.4f}")
+        print(f"Binary F1 Score (safe): {binary_f1:.4f}")
 
-    print("[6] Evaluating chunked predictions...")
-    y_true_chunk = []
-    y_pred_chunk = []
-    for sample in tqdm.tqdm(test_dataset):
-        code = sample["code"]
-        label = sample["output"].strip().lower()
-        prediction = predict_single_code(code, tokenizer, model, chunk_max_tokens=args.chunk_max_tokens, overlap=args.chunk_overlap, max_new_tokens=args.max_new_tokens)
-        y_true_chunk.append(label)
-        y_pred_chunk.append(prediction)
-        
-    accuracy_chunk = accuracy_score(y_true_chunk, y_pred_chunk)
-    precision_chunk = precision_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
-    recall_chunk = recall_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
-    f1_chunk = f1_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
+        print(f"Evaluating chunked predictions for {name}...")
+        y_true_chunk = []
+        y_pred_chunk = []
+        for sample in tqdm.tqdm(test_dataset):
+            code = sample["code"]
+            label = sample["output"].strip().lower()
+            prediction = predict_single_code(code, tokenizer, model, chunk_max_tokens=args.chunk_max_tokens, overlap=args.chunk_overlap, max_new_tokens=args.max_new_tokens)
+            y_true_chunk.append(label)
+            y_pred_chunk.append(prediction)
 
-    print(f"Chunked Accuracy: {accuracy_chunk:.4f}")
-    print(f"Chunked Precision: {precision_chunk:.4f}")
-    print(f"Chunked Recall: {recall_chunk:.4f}")
-    print(f"Chunked F1 Score: {f1_chunk:.4f}")
+        accuracy_chunk = accuracy_score(y_true_chunk, y_pred_chunk)
+        precision_chunk = precision_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
+        recall_chunk = recall_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
+        f1_chunk = f1_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
 
-    y_true_chunk_binary = [to_binary(label) for label in y_true_chunk]
-    y_pred_chunk_binary = [to_binary(pred) for pred in y_pred_chunk]
+        print(f"Chunked Accuracy: {accuracy_chunk:.4f}")
+        print(f"Chunked Precision: {precision_chunk:.4f}")
+        print(f"Chunked Recall: {recall_chunk:.4f}")
+        print(f"Chunked F1 Score: {f1_chunk:.4f}")
 
-    binary_accuracy_chunk = accuracy_score(y_true_chunk_binary, y_pred_chunk_binary)
-    binary_precision_chunk = precision_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
-    binary_recall_chunk = recall_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
-    binary_f1_chunk = f1_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
+        y_true_chunk_binary = [to_binary(label) for label in y_true_chunk]
+        y_pred_chunk_binary = [to_binary(pred) for pred in y_pred_chunk]
 
-    print(f"Chunked Binary Accuracy (safe/unsafe): {binary_accuracy_chunk:.4f}")
-    print(f"Chunked Binary Precision (safe): {binary_precision_chunk:.4f}")
-    print(f"Chunked Binary Recall (safe): {binary_recall_chunk:.4f}")
-    print(f"Chunked Binary F1 Score (safe): {binary_f1_chunk:.4f}")
+        binary_accuracy_chunk = accuracy_score(y_true_chunk_binary, y_pred_chunk_binary)
+        binary_precision_chunk = precision_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
+        binary_recall_chunk = recall_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
+        binary_f1_chunk = f1_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
 
-    summary = {
-        "model": args.model_dir,
-        "test_samples": len(test_dataset),
-        "truncated_metrics": {
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-        },
-        "binary_truncated_metrics": {
-            "accuracy": binary_accuracy,
-            "precision": binary_precision,
-            "recall": binary_recall,
-            "f1": binary_f1,
-        },
-        "chunked_metrics": {
-            "accuracy": accuracy_chunk,
-            "precision": precision_chunk,
-            "recall": recall_chunk,
-            "f1": f1_chunk,
-        },
-        "binary_chunked_metrics": {
-            "accuracy": binary_accuracy_chunk,
-            "precision": binary_precision_chunk,
-            "recall": binary_recall_chunk,
-            "f1": binary_f1_chunk,
+        print(f"Chunked Binary Accuracy (safe/unsafe): {binary_accuracy_chunk:.4f}")
+        print(f"Chunked Binary Precision (safe): {binary_precision_chunk:.4f}")
+        print(f"Chunked Binary Recall (safe): {binary_recall_chunk:.4f}")
+        print(f"Chunked Binary F1 Score (safe): {binary_f1_chunk:.4f}")
+
+        return {
+            "test_samples": len(test_dataset),
+            "truncated_metrics": {
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            },
+            "binary_truncated_metrics": {
+                "accuracy": binary_accuracy,
+                "precision": binary_precision,
+                "recall": binary_recall,
+                "f1": binary_f1,
+            },
+            "chunked_metrics": {
+                "accuracy": accuracy_chunk,
+                "precision": precision_chunk,
+                "recall": recall_chunk,
+                "f1": f1_chunk,
+            },
+            "binary_chunked_metrics": {
+                "accuracy": binary_accuracy_chunk,
+                "precision": binary_precision_chunk,
+                "recall": binary_recall_chunk,
+                "f1": binary_f1_chunk,
+            }
         }
-    }
+
+    summary = {"model": args.model_dir, "datasets": {}}
+
+    print("[4] Evaluating datasets...")
+    for name, data in datasets:
+        dataset = data()
+        _, _, test = get_split(dataset)
+        print(f"Test size for {name}: {len(test)}")
+        dataset_summary = evaluate_dataset(name, test)
+        summary["datasets"][name] = dataset_summary
 
     with open(os.path.join(args.log_dir, "performance_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)

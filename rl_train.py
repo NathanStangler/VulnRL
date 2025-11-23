@@ -14,7 +14,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from data_processing import get_dataset
+from data_processing import process_lemon42, get_split
 from performance import clean_label  # reuse same label cleaning
 
 
@@ -230,7 +230,8 @@ def main():
     set_seed(args.seed)
 
     print("[0] Loading dataset...")
-    train, _, _ = get_dataset()
+    dataset = process_lemon42()
+    train, _, _ = get_split(dataset)
     if args.max_train_samples is not None:
         train = train.select(range(min(args.max_train_samples, len(train))))
 

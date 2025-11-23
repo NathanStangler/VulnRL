@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer
-from data_processing import get_dataset, tokenize_dataset
+from data_processing import process_lemon42, get_split, tokenize_dataset
 from code_chunker import build_chunks
 from code_evaluator import CodeEvaluator
 from feedback_loop import feedback_learning_step
@@ -22,7 +22,8 @@ def main():
     os.makedirs(args.log_dir, exist_ok=True)
 
     print("[1] Loading test dataset...")
-    _, _, test = get_dataset()
+    dataset = process_lemon42()
+    _, _, test = get_split(dataset)
     print(f"Test: {len(test)}")
 
     print("[2] Loading tokenizer...")
