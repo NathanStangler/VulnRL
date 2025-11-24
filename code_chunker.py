@@ -18,8 +18,11 @@ def build_chunks(root, tokenizer, max_tokens=1024, overlap=128):
         code_splitter = CodeSplitter(language="cpp")
         nodes = code_splitter.get_nodes_from_documents(docs)
     except Exception:
-        code_splitter = CodeSplitter(language="c")
-        nodes = code_splitter.get_nodes_from_documents(docs)
+        try:
+            code_splitter = CodeSplitter(language="c")
+            nodes = code_splitter.get_nodes_from_documents(docs)
+        except Exception:
+            return {"file": "", "chunk": 0, "code": ""}
     for node in nodes:
         for i, chunk in enumerate(token_splitter.split_text(node.text)):
             result.append({
