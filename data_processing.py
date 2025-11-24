@@ -64,6 +64,7 @@ def process_lemon42():
 
 def process_megavul():
     dataset = load_dataset("hitoshura25/megavul", split="train")
+    dataset = dataset.filter(lambda sample: sample["language"] == "C++")
     dataset = dataset.filter(lambda sample: sample["cwe_id"] != "CWE-Other")
     dataset = dataset.filter(lambda sample: sample["vulnerable_code"] is not None)
 

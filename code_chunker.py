@@ -14,8 +14,12 @@ def build_chunks(root, tokenizer, max_tokens=1024, overlap=128):
     docs = [doc for f in files for doc in SimpleDirectoryReader(input_files=[str(f)]).load_data()]
     token_splitter = TokenTextSplitter(tokenizer=tokenizer, chunk_size=max_tokens, chunk_overlap=overlap)
     result = []
-    code_splitter = CodeSplitter(language="cpp")
-    nodes = code_splitter.get_nodes_from_documents(docs)
+    try:
+        code_splitter = CodeSplitter(language="cpp")
+        nodes = code_splitter.get_nodes_from_documents(docs)
+    except Exception:
+        code_splitter = CodeSplitter(language="c")
+        nodes = code_splitter.get_nodes_from_documents(docs)
     for node in nodes:
         for i, chunk in enumerate(token_splitter.split_text(node.text)):
             result.append({
