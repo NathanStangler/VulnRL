@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
+/* your CSS unchanged */
 body {
     font-family: Arial, sans-serif;
     background: #111;
@@ -72,9 +73,7 @@ button:hover {
     <h2>Vulnerability Detection UI</h2>
 
     <label>Select Model:</label>
-    <div id="modelContainer">
-        <!-- Filled dynamically -->
-    </div>
+    <div id="modelContainer"></div>
 
     <label>Upload Code File:</label>
     <input type="file" id="fileInput" />
@@ -86,8 +85,6 @@ button:hover {
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-
 const apiBase = "http://127.0.0.1:8080";
 
 async function loadModels() {
@@ -98,48 +95,39 @@ async function loadModels() {
         const container = document.getElementById("modelContainer");
         container.innerHTML = "";
 
-        console.log("Loaded models:", data);
-
         Object.entries(data.available_models).forEach(([key, path]) => {
             const div = document.createElement("div");
             div.className = "model-option";
-
             div.innerHTML = `
                 <input type="radio" name="modelChoice" value="${key}" id="m_${key}">
                 <label for="m_${key}">${key} <span style="opacity:0.6">(${path})</span></label>
             `;
-
             container.appendChild(div);
         });
 
-        // Select first model automatically
         const first = container.querySelector("input[type=radio]");
         if (first) first.checked = true;
     } catch (err) {
         console.error("Failed to load models:", err);
     }
 }
-loadModels();
 
+document.addEventListener("DOMContentLoaded", loadModels);
+
+// NOW analyzeCode is GLOBAL and works with the button:
 async function analyzeCode() {
     const fileInput = document.getElementById("fileInput");
     const loading = document.getElementById("loadingText");
     const resultBox = document.getElementById("result");
 
     const selected = document.querySelector("input[name='modelChoice']:checked");
-    if (!selected) {
-        alert("Please choose a model first!");
-        return;
-    }
+    if (!selected) return alert("Choose a model!");
+
     const modelKey = selected.value;
+    if (!fileInput.files.length) return alert("Choose a file!");
 
-    if (!fileInput.files.length) {
-        alert("Please choose a code file!");
-        return;
-    }
-
-    resultBox.textContent = "";
     loading.style.display = "block";
+    resultBox.textContent = "";
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
@@ -149,18 +137,14 @@ async function analyzeCode() {
             method: "POST",
             body: formData
         });
-
         const data = await response.json();
         loading.style.display = "none";
         resultBox.textContent = JSON.stringify(data, null, 2);
-    } 
-    catch (err) {
+    } catch (err) {
         loading.style.display = "none";
         resultBox.textContent = "❌ Error: " + err;
     }
 }
-
-}); // DOMContentLoaded
 </script>
 
 </body>
