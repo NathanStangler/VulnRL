@@ -12,39 +12,40 @@ from transformers import (
     AutoModelForCausalLM,
     BitsAndBytesConfig,
 )
+
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from data_processing import process_lemon42, get_split
-from performance import clean_label  # reuse same label cleaning
+from data_processing import get_dataset
+from performance import clean_label
+from feedback_loop import feedback_learning_step   # << NEW
 
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--model_name", default="Qwen/Qwen2.5-Coder-1.5B-Instruct")
-    p.add_argument(
-        "--sft_model_dir",
-        default=None,
-        help="Optional path to an SFT checkpoint to start RL from.",
-    )
+
+    # Can now accept HF model name OR local folder
+    p.add_argument("--model_name", default="Qwen/Qwen2.5-Coder-1.5B-Instruct",
+                   help="HF model OR local checkpoint folder.")
+
     p.add_argument("--output_dir", default="./rl_model")
     p.add_argument("--log_dir", default="./logs")
+
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--train_batch_size", type=int, default=2)
     p.add_argument("--max_new_tokens", type=int, default=32)
+
     p.add_argument("--learning_rate", type=float, default=1e-5)
     p.add_argument("--gradient_accumulation_steps", type=int, default=8)
-    p.add_argument(
-        "--max_train_samples",
-        type=int,
-        default=None,
-        help="Optional cap on # train samples for quick runs.",
-    )
+    p.add_argument("--max_train_samples", type=int, default=None)
+
     p.add_argument("--use_lora", action="store_true")
     p.add_argument("--lora_r", type=int, default=16)
     p.add_argument("--lora_alpha", type=int, default=32)
     p.add_argument("--lora_dropout", type=float, default=0.05)
+
     p.add_argument("--load_in_4bit", action="store_true")
     p.add_argument("--seed", type=int, default=42)
+
     return p.parse_args()
 
 
@@ -64,10 +65,7 @@ def build_messages(code: str) -> List[Dict[str, str]]:
                 "categories or 'safe'. Only respond with the classification label."
             ),
         },
-        {
-            "role": "user",
-            "content": code,
-        },
+        {"role": "user", "content": code},
     ]
 
 
@@ -81,37 +79,35 @@ def build_prompt(tokenizer, code: str) -> str:
 
 
 def load_model_and_tokenizer(args):
-    model_path = args.sft_model_dir if args.sft_model_dir is not None else args.model_name
-
-    print(f"[1] Loading tokenizer from {model_path}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    print(f"[1] Loading tokenizer from {args.model_name}...")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    print(f"[2] Loading model from {model_path}...")
-    quantization_config = BitsAndBytesConfig(
+    print(f"[2] Loading model from {args.model_name}...")
+    quant_config = BitsAndBytesConfig(
         load_in_4bit=args.load_in_4bit,
         bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_quant_type="nf4",
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        quantization_config=quantization_config if args.load_in_4bit else None,
+        args.model_name,
+        quantization_config=quant_config if args.load_in_4bit else None,
         device_map="auto",
     )
 
     if args.use_lora:
-        print("[2.1] Preparing model for LoRA k-bit training...")
+        print("[2.1] Preparing LoRA...")
         model = prepare_model_for_kbit_training(model)
-        peft_config = LoraConfig(
+        lora_cfg = LoraConfig(
             r=args.lora_r,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             bias="none",
             task_type="CAUSAL_LM",
         )
-        model = get_peft_model(model, peft_config)
+        model = get_peft_model(model, lora_cfg)
         model.print_trainable_parameters()
 
     return tokenizer, model
@@ -139,36 +135,52 @@ def collate_fn(batch, tokenizer):
 
 
 def rl_step(model, tokenizer, batch, args, baseline):
+    """
+    RL step:
+
+    - Sample a prediction from the model.
+    - Compute reward using feedback_learning_step(model, tokenizer, code_path, ...),
+      which runs the compiler + sanitizers and returns a scalar reward.
+    - Use REINFORCE with a moving baseline.
+    """
     device = model.device
 
     input_ids = batch["input_ids"].to(device)
-    attention_mask = batch["attention_mask"].to(device)
-    labels_text = batch["labels_text"]
+    attn = batch["attention_mask"].to(device)
+    codes = batch["codes"]
+    paths = batch["paths"]
 
-    # 1) Sample an action (classification text)
+    # 1) Sample an action (we still generate, so the policy has something to optimize)
     with torch.no_grad():
         generated = model.generate(
             input_ids=input_ids,
-            attention_mask=attention_mask,
+            attention_mask=attn,
             max_new_tokens=args.max_new_tokens,
             do_sample=True,
             pad_token_id=tokenizer.eos_token_id,
         )
 
+    # Extract only the generated tokens
     gen_only = []
     for inp, out in zip(input_ids, generated):
         gen_only.append(out[len(inp):])
 
     pred_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
-    cleaned_preds = [clean_label(p) for p in pred_texts]
-    cleaned_labels = [clean_label(t) for t in labels_text]
 
-    # 2) Reward: 1 if classification matches label, else 0
-    rewards = torch.tensor(
-        [1.0 if p == t else 0.0 for p, t in zip(cleaned_preds, cleaned_labels)],
-        device=device,
-        dtype=torch.float32,
-    )
+    # 2) Compiler-based reward via feedback_learning_step
+    rewards_list = []
+    for i, code_path in enumerate(paths):
+        if code_path is None:
+            # If dataset doesn’t have a path, fall back gracefully
+            print("[WARN] No code_path in batch example; assigning reward 0.0")
+            r = 0.0
+        else:
+            # This matches the signature you showed:
+            # def feedback_learning_step(model, tokenizer, code_path, feedback_log="feedback_logs.jsonl"):
+            r = feedback_learning_step(model, tokenizer, code_path)
+        rewards_list.append(float(r))
+
+    rewards = torch.tensor(rewards_list, device=device, dtype=torch.float32)
 
     # 3) Compute log-prob of the generated tokens (policy gradient style)
     padded_gen = torch.nn.utils.rnn.pad_sequence(
@@ -176,23 +188,19 @@ def rl_step(model, tokenizer, batch, args, baseline):
     )
 
     full_inputs = torch.cat([input_ids, padded_gen], dim=1)
-    full_attention_mask = torch.ones_like(full_inputs, device=device)
+    full_attn = torch.ones_like(full_inputs).to(device)
 
-    outputs = model(
-        input_ids=full_inputs,
-        attention_mask=full_attention_mask,
-    )
+    outputs = model(input_ids=full_inputs, attention_mask=full_attn)
     logits = outputs.logits[:, :-1, :]
     target_ids = full_inputs[:, 1:]
 
-    vocab_size = logits.size(-1)
     log_probs_all = -F.cross_entropy(
-        logits.reshape(-1, vocab_size),
+        logits.reshape(-1, logits.size(-1)),
         target_ids.reshape(-1),
         reduction="none",
     ).view(logits.size(0), logits.size(1))
 
-    batch_size = input_ids.size(0)
+    batch_size = len(gen_only)
     gen_log_probs = []
     for i in range(batch_size):
         prompt_len = input_ids[i].ne(tokenizer.pad_token_id).sum().item()
@@ -203,21 +211,20 @@ def rl_step(model, tokenizer, batch, args, baseline):
 
     gen_log_probs = torch.stack(gen_log_probs)
 
-    # 4) Baseline + policy gradient loss
+    # 4) Baseline + REINFORCE loss
     if baseline is None:
         baseline = rewards.mean().item()
+
     advantage = rewards - baseline
     loss = -(advantage * gen_log_probs).mean()
 
-    with torch.no_grad():
-        new_baseline = 0.9 * baseline + 0.1 * rewards.mean().item()
+    new_baseline = 0.9 * baseline + 0.1 * rewards.mean().item()
 
     stats = {
         "reward_mean": rewards.mean().item(),
         "reward_std": rewards.std().item() if len(rewards) > 1 else 0.0,
         "baseline": baseline,
         "pred_example": pred_texts[0],
-        "label_example": labels_text[0],
     }
 
     return loss, new_baseline, stats
@@ -227,18 +234,19 @@ def main():
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
+
     set_seed(args.seed)
 
     print("[0] Loading dataset...")
-    dataset = process_lemon42()
-    train, _, _ = get_split(dataset)
-    if args.max_train_samples is not None:
+    train, _, _ = get_dataset()
+
+    if args.max_train_samples:
         train = train.select(range(min(args.max_train_samples, len(train))))
 
     tokenizer, model = load_model_and_tokenizer(args)
     model.train()
 
-    train_loader = DataLoader(
+    loader = DataLoader(
         train,
         batch_size=args.train_batch_size,
         shuffle=True,
@@ -250,12 +258,12 @@ def main():
         lr=args.learning_rate,
     )
 
-    global_step = 0
     baseline = None
+    global_step = 0
 
     for epoch in range(args.epochs):
-        print(f"[3] Starting RL epoch {epoch+1}/{args.epochs}...")
-        for step, batch in enumerate(train_loader):
+        print(f"[3] RL Epoch {epoch+1}/{args.epochs}")
+        for step, batch in enumerate(loader):
             loss, baseline, stats = rl_step(model, tokenizer, batch, args, baseline)
 
             loss = loss / args.gradient_accumulation_steps
@@ -270,18 +278,15 @@ def main():
                 if global_step % 10 == 0:
                     print(
                         f"[step {global_step}] loss={loss.item():.4f} "
-                        f"reward_mean={stats['reward_mean']:.4f} "
+                        f"reward={stats['reward_mean']:.4f} "
                         f"baseline={stats['baseline']:.4f}"
                     )
-                    print(
-                        f"   example pred='{stats['pred_example']}' "
-                        f"label='{stats['label_example']}'"
-                    )
+                    print(f"   pred example: {stats['pred_example']}")
 
-    print("[4] Saving RL-tuned model...")
+    print("[4] Saving RL model...")
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
-    print("[✔] RL training complete.")
+    print("✓ Done.")
 
 
 if __name__ == "__main__":
