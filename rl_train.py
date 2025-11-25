@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import uuid
 from typing import List, Dict
 
 import torch
@@ -12,20 +13,22 @@ from transformers import (
     AutoModelForCausalLM,
     BitsAndBytesConfig,
 )
-
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from data_processing import get_split
+from data_processing import get_split, process_lemon42, process_megavul, process_secvuleval
 from performance import clean_label
-from feedback_loop import feedback_learning_step   # << NEW
+from feedback_loop import feedback_learning_step   # uses (model, tokenizer, code_path, feedback_log=...)
 
 
 def parse_args():
     p = argparse.ArgumentParser()
 
-    # Can now accept HF model name OR local folder
-    p.add_argument("--model_name", default="Qwen/Qwen2.5-Coder-1.5B-Instruct",
-                   help="HF model OR local checkpoint folder.")
+    # HF name OR local finetuned folder
+    p.add_argument(
+        "--model_name",
+        default="Qwen/Qwen2.5-Coder-1.5B-Instruct",
+        help="HuggingFace model name or local checkpoint folder.",
+    )
 
     p.add_argument("--output_dir", default="./rl_model")
     p.add_argument("--log_dir", default="./logs")
@@ -45,6 +48,16 @@ def parse_args():
 
     p.add_argument("--load_in_4bit", action="store_true")
     p.add_argument("--seed", type=int, default=42)
+
+    # Where to write temporary .cpp files for compiler reward
+    p.add_argument("--tmp_dir", default="./rl_tmp_codes")
+
+    # Which dataset(s) to use – simple switch
+    p.add_argument(
+        "--dataset_name",
+        default="lemon42",
+        choices=["lemon42", "megavul", "secvuleval"],
+    )
 
     return p.parse_args()
 
@@ -76,6 +89,18 @@ def build_prompt(tokenizer, code: str) -> str:
         tokenize=False,
         add_generation_prompt=True,
     )
+
+
+def load_dataset_for_rl(args):
+    if args.dataset_name == "lemon42":
+        ds = process_lemon42()
+    elif args.dataset_name == "megavul":
+        ds = process_megavul()
+    else:
+        ds = process_secvuleval()
+
+    train, _, _ = get_split(ds)
+    return train
 
 
 def load_model_and_tokenizer(args):
@@ -134,23 +159,34 @@ def collate_fn(batch, tokenizer):
     }
 
 
+def write_temp_code_files(codes, tmp_dir):
+    os.makedirs(tmp_dir, exist_ok=True)
+    paths = []
+    for code in codes:
+        fname = f"sample_{uuid.uuid4().hex}.cpp"
+        path = os.path.join(tmp_dir, fname)
+        with open(path, "w") as f:
+            f.write(code)
+        paths.append(path)
+    return paths
+
+
 def rl_step(model, tokenizer, batch, args, baseline):
     """
     RL step:
 
-    - Sample a prediction from the model.
-    - Compute reward using feedback_learning_step(model, tokenizer, code_path, ...),
-      which runs the compiler + sanitizers and returns a scalar reward.
-    - Use REINFORCE with a moving baseline.
+    - Generate a classification from the model (so we have actions).
+    - For each code snippet, write it to a temporary .cpp file.
+    - Call feedback_learning_step(model, tokenizer, code_path) to get a compiler-based reward.
+    - Use REINFORCE with a moving baseline on generated token log-probs.
     """
     device = model.device
 
     input_ids = batch["input_ids"].to(device)
     attn = batch["attention_mask"].to(device)
     codes = batch["codes"]
-    paths = batch["paths"]
 
-    # 1) Sample an action (we still generate, so the policy has something to optimize)
+    # 1) Sample an action (classification text)
     with torch.no_grad():
         generated = model.generate(
             input_ids=input_ids,
@@ -160,29 +196,25 @@ def rl_step(model, tokenizer, batch, args, baseline):
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    # Extract only the generated tokens
+    # Extract generated-only tokens
     gen_only = []
     for inp, out in zip(input_ids, generated):
         gen_only.append(out[len(inp):])
 
     pred_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
 
-    # 2) Compiler-based reward via feedback_learning_step
+    # 2) Write code to temp files and compute compiler-based rewards
+    code_paths = write_temp_code_files(codes, args.tmp_dir)
+
     rewards_list = []
-    for i, code_path in enumerate(paths):
-        if code_path is None:
-            # If dataset doesn’t have a path, fall back gracefully
-            print("[WARN] No code_path in batch example; assigning reward 0.0")
-            r = 0.0
-        else:
-            # This matches the signature you showed:
-            # def feedback_learning_step(model, tokenizer, code_path, feedback_log="feedback_logs.jsonl"):
-            r = feedback_learning_step(model, tokenizer, code_path)
+    for code_path in code_paths:
+        # matches: feedback_learning_step(model, tokenizer, code_path, feedback_log="feedback_logs.jsonl")
+        r = feedback_learning_step(model, tokenizer, code_path)
         rewards_list.append(float(r))
 
     rewards = torch.tensor(rewards_list, device=device, dtype=torch.float32)
 
-    # 3) Compute log-prob of the generated tokens (policy gradient style)
+    # 3) Compute log-prob of generated tokens
     padded_gen = torch.nn.utils.rnn.pad_sequence(
         gen_only, batch_first=True, padding_value=tokenizer.pad_token_id
     )
@@ -211,7 +243,7 @@ def rl_step(model, tokenizer, batch, args, baseline):
 
     gen_log_probs = torch.stack(gen_log_probs)
 
-    # 4) Baseline + REINFORCE loss
+    # 4) REINFORCE with moving baseline
     if baseline is None:
         baseline = rewards.mean().item()
 
@@ -234,12 +266,12 @@ def main():
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
+    os.makedirs(args.tmp_dir, exist_ok=True)
 
     set_seed(args.seed)
 
     print("[0] Loading dataset...")
-    train, _, _ = get_split()
-
+    train = load_dataset_for_rl(args)
     if args.max_train_samples:
         train = train.select(range(min(args.max_train_samples, len(train))))
 
@@ -286,7 +318,7 @@ def main():
     print("[4] Saving RL model...")
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
-    print("✓ Done.")
+    print("✓ RL training complete.")
 
 
 if __name__ == "__main__":
