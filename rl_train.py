@@ -20,6 +20,18 @@ from performance import clean_label
 from feedback_loop import feedback_learning_step   # uses (model, tokenizer, code_path, feedback_log=...)
 
 
+ALLOWED_LABELS = [
+    "safe",
+    "buffer_overflow",
+    "null_pointer_dereference",
+    "integer_overflow",
+    "use_after_free",
+    "race_condition",
+    "other_vulnerability",
+]
+
+
+
 def parse_args():
     p = argparse.ArgumentParser()
 
@@ -59,6 +71,15 @@ def parse_args():
         choices=["lemon42", "megavul", "secvuleval"],
     )
 
+
+    p.add_argument(
+        "--compiler_weight",
+        type=float,
+        default=0.7,
+        help="Weight for compiler-based reward; 1 - this is classification reward weight.",
+    )
+
+
     return p.parse_args()
 
 
@@ -69,17 +90,22 @@ def set_seed(seed: int):
 
 
 def build_messages(code: str) -> List[Dict[str, str]]:
+    label_str = ", ".join(ALLOWED_LABELS)
     return [
         {
             "role": "system",
             "content": (
-                "You are a security analyzer for C/C++ code. "
-                "Given a code snippet, classify it into one of the known vulnerability "
-                "categories or 'safe'. Only respond with the classification label."
+                "You are a security analyzer for C/C++ code.\n"
+                f"Given a code snippet, classify it into exactly ONE of the following labels: {label_str}.\n"
+                "Rules:\n"
+                "1. Respond with ONLY the label text, no explanation.\n"
+                "2. Do not invent new labels.\n"
+                "3. If nothing seems vulnerable, use 'safe'."
             ),
         },
         {"role": "user", "content": code},
     ]
+
 
 
 def build_prompt(tokenizer, code: str) -> str:
@@ -175,9 +201,10 @@ def rl_step(model, tokenizer, batch, args, baseline):
     """
     RL step:
 
-    - Generate a classification from the model (so we have actions).
+    - Generate a classification from the model (actions).
     - For each code snippet, write it to a temporary .cpp file.
-    - Call feedback_learning_step(model, tokenizer, code_path) to get a compiler-based reward.
+    - Call feedback_learning_step(...) to get a compiler-based reward.
+    - Compute a label-accuracy reward and mix it with the compiler reward.
     - Use REINFORCE with a moving baseline on generated token log-probs.
     """
     device = model.device
@@ -185,6 +212,7 @@ def rl_step(model, tokenizer, batch, args, baseline):
     input_ids = batch["input_ids"].to(device)
     attn = batch["attention_mask"].to(device)
     codes = batch["codes"]
+    gold_labels_text = batch["labels_text"]  # ground truth labels as strings
 
     # 1) Sample an action (classification text)
     with torch.no_grad():
@@ -203,16 +231,37 @@ def rl_step(model, tokenizer, batch, args, baseline):
 
     pred_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
 
-    # 2) Write code to temp files and compute compiler-based rewards
+    # 2) Compiler-based rewards
     code_paths = write_temp_code_files(codes, args.tmp_dir)
 
-    rewards_list = []
+    compiler_rewards_list = []
     for code_path in code_paths:
-        # matches: feedback_learning_step(model, tokenizer, code_path, feedback_log="feedback_logs.jsonl")
         r = feedback_learning_step(model, tokenizer, code_path)
-        rewards_list.append(float(r))
+        compiler_rewards_list.append(float(r))
 
-    rewards = torch.tensor(rewards_list, device=device, dtype=torch.float32)
+    compiler_rewards = torch.tensor(
+        compiler_rewards_list, device=device, dtype=torch.float32
+    )
+
+    # 2b) Classification reward (soft nudge toward correct label)
+    cls_rewards_list = []
+    for pred_text, gold_text in zip(pred_texts, gold_labels_text):
+        pred_label = clean_label(pred_text)
+        gold_label = clean_label(gold_text)
+
+        # basic scheme:
+        # 1.0 if correct label, 0.0 otherwise
+        # (you can make this harsher by using -0.5 or -1.0 for wrong/invalid)
+        if pred_label is not None and gold_label is not None and pred_label == gold_label:
+            cls_rewards_list.append(1.0)
+        else:
+            cls_rewards_list.append(0.0)
+
+    cls_rewards = torch.tensor(cls_rewards_list, device=device, dtype=torch.float32)
+
+    # 2c) Mix compiler + classification rewards
+    w = getattr(args, "compiler_weight", 0.7)
+    rewards = w * compiler_rewards + (1.0 - w) * cls_rewards
 
     # 3) Compute log-prob of generated tokens
     padded_gen = torch.nn.utils.rnn.pad_sequence(
@@ -260,6 +309,7 @@ def rl_step(model, tokenizer, batch, args, baseline):
     }
 
     return loss, new_baseline, stats
+
 
 
 def main():
