@@ -44,6 +44,18 @@ if [ -z "$RUN_MODE" ] || [ "$RUN_MODE" = "finetune" ]; then
     --report_to "$REPORT_TO"
 fi
 
+if [ "$RUN_MODE" = "rl" ]; then
+  python rl_train.py \
+    --model_name "$MODEL_NAME" \
+    --output_dir "$OUTPUT_DIR" \
+    --log_dir "$LOG_DIR" \
+    --epochs "$EPOCHS" \
+    --train_batch_size "$TRAIN_BATCH_SIZE" \
+    --max_new_tokens "${MAX_NEW_TOKENS:-32}" \
+    $( [ "$USE_LORA" = "true" ] && echo --use_lora ) \
+    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit )
+fi
+
 if [ "$RUN_MODE" = "evaluate" ]; then
   python evaluate.py \
     --model_dir "$OUTPUT_DIR" \

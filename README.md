@@ -53,14 +53,19 @@ Finetune custom config:
 sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=3,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=1e-5,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
 ```
 
+RL:
+```bash
+sbatch --export=RUN_MODE=rl,MODEL_NAME=./finetuned_model,OUTPUT_DIR=./rl_model,EPOCHS=1,TRAIN_BATCH_SIZE=8,MAX_NEW_TOKENS=32,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
+```
+
 Evaluate model:
 ```bash
-sbatch --export=RUN_MODE=evaluate,OUTPUT_DIR=./finetuned_model script.sbatch
+sbatch --export=RUN_MODE=evaluate,MODEL_DIR=./finetuned_model,OUTPUT_DIR=./finetuned_model script.sbatch
 ```
 
 Performance evaluation:
 ```bash
-sbatch --export=RUN_MODE=performance,OUTPUT_DIR=./finetuned_model script.sbatch
+sbatch --export=RUN_MODE=performance,MODEL_DIR=./finetuned_model,OUTPUT_DIR=./finetuned_model script.sbatch
 ```
 
 ### Manage jobs

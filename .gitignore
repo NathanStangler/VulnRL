@@ -27,6 +27,7 @@ artifacts/
 
 # Weights
 finetuned_model/
+rl_model/
 checkpoints/
 *.pth
 *.pt
@@ -37,6 +38,7 @@ run_logs/
 logs/
 feedback_logs.jsonl
 sample_cpp/
+rl_tmp_codes/
 
 # VS Code
 .vscode/
