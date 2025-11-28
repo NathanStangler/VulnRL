@@ -185,16 +185,24 @@ def collate_fn(batch, tokenizer):
     }
 
 
-def write_temp_code_files(codes, tmp_dir):
-    os.makedirs(tmp_dir, exist_ok=True)
+def write_temp_code_dirs(codes, tmp_root):
+    os.makedirs(tmp_root, exist_ok=True)
     paths = []
     for code in codes:
-        fname = f"sample_{uuid.uuid4().hex}.cpp"
-        path = os.path.join(tmp_dir, fname)
-        with open(path, "w") as f:
+        # make a unique folder for this example
+        dir_name = f"sample_{uuid.uuid4().hex}"
+        dir_path = os.path.join(tmp_root, dir_name)
+        os.makedirs(dir_path, exist_ok=True)
+
+        # write the code into that folder, e.g., main.cpp
+        file_path = os.path.join(dir_path, "main.cpp")
+        with open(file_path, "w") as f:
             f.write(code)
-        paths.append(path)
+
+        # return the *directory* path
+        paths.append(dir_path)
     return paths
+
 
 
 def rl_step(model, tokenizer, batch, args, baseline):
@@ -232,7 +240,8 @@ def rl_step(model, tokenizer, batch, args, baseline):
     pred_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
 
     # 2) Compiler-based rewards
-    code_paths = write_temp_code_files(codes, args.tmp_dir)
+    code_paths = write_temp_code_dirs(codes, args.tmp_dir)
+
 
     compiler_rewards_list = []
     for code_path in code_paths:
