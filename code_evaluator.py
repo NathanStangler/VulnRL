@@ -26,10 +26,10 @@ class CodeEvaluator:
 
     def _run(self, cmd, cwd=None, timeout=60):
         try:
-            completed = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+            completed = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout, encoding="utf-8", errors="replace")
             return completed.returncode, completed.stdout, completed.stderr
         except subprocess.TimeoutExpired as e:
-            return -1, e.stdout, e.stderr
+            return -1, e.stdout or "", e.stderr or ""
         except FileNotFoundError:
             return -1, "", ""
 

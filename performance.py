@@ -50,7 +50,11 @@ def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=1
         with open(os.path.join(directory, "main.cpp"), "w") as f:
             f.write(code)
         chunks = build_chunks(directory, tokenizer.encode, max_tokens=chunk_max_tokens, overlap=overlap)
-        responses = [get_prediction(chunk["code"], tokenizer, model, max_new_tokens=max_new_tokens) for chunk in chunks]
+        responses = []
+        for chunk in chunks:
+            if not chunk["code"]:
+                continue
+            responses.append(get_prediction(chunk["code"], tokenizer, model, max_new_tokens=max_new_tokens))
         most_common = Counter(responses).most_common(1)
         return most_common[0][0] if most_common else "unsafe"
 
