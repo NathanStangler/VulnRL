@@ -13,6 +13,7 @@ import difflib
 
 def parse_args():
     p = argparse.ArgumentParser()
+    p.add_argument("--artifact", default=None)
     p.add_argument("--model_dir", default="./finetuned_model")
     p.add_argument("--log_dir", default="./logs")
     p.add_argument("--max_new_tokens", type=int, default=64)
@@ -119,6 +120,14 @@ def to_binary(label):
 def main():
     args = parse_args()
     os.makedirs(args.log_dir, exist_ok=True)
+    if args.artifact:
+        print(f"Downloading model artifact...")
+        import wandb
+        temp = tempfile.mkdtemp(prefix="model_artifact_")
+        artifact = wandb.Api().artifact(args.artifact)
+        artifact_dir = artifact.download(root=temp)
+        args.model_dir = artifact_dir
+        print(f"Model artifact downloaded to {artifact_dir}")
 
     print("[1] Processing datasets...")
     datasets = [

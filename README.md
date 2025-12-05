@@ -39,6 +39,7 @@ Use --export to pass variables
 Variables:
 - RUN_MODE: finetune | evaluate | performance
 - MODEL_NAME: HuggingFace model
+- ARTIFACT: W&B model artifact
 - OUTPUT_DIR: output path
 - LOG_DIR: log path
 - EPOCHS, TRAIN_BATCH_SIZE, EVAL_BATCH_SIZE, GRADIENT_ACCUMULATION_STEPS, LR

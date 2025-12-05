@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from data_processing import process_lemon42, get_split, tokenize_dataset
+from data_processing import process_lemon42, process_megavul, process_secvuleval, get_split, tokenize_dataset
+from datasets import concatenate_datasets
 import argparse
 import torch
 import os
@@ -33,10 +34,24 @@ def main():
         os.environ["WANDB_PROJECT"] = args.wandb_project
         os.environ["WANDB_LOG_MODEL"] = "end"
 
-    print("[1] Loading dataset...")
-    dataset = process_lemon42()
-    train, validation, _ = get_split(dataset)
-    print(f"Train: {len(train)}, Validation: {len(validation)}")
+    print("[1] Loading datasets...")
+    datasets = [
+        ("lemon42", process_lemon42),
+        ("megavul", process_megavul),
+        ("secvuleval", process_secvuleval),
+    ]
+    train_set = []
+    validation_set = []
+    for name, processor in datasets:
+        dataset = processor()
+        train, validation, _ = get_split(dataset)
+        print(f"{name} - Train: {len(train)}, Validation: {len(validation)}")
+        train_set.append(train)
+        validation_set.append(validation)
+    
+    train = concatenate_datasets(train_set)
+    validation = concatenate_datasets(validation_set)
+    print(f"Combined - Train: {len(train)}, Validation: {len(validation)}")
 
     print("[2] Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
@@ -110,6 +125,16 @@ def main():
     trainer.train()
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
+
+    if args.report_to == "wandb":
+        print("[6] Logging model to Weights & Biases...")
+        import wandb
+        run = wandb.run or wandb.init(project=args.wandb_project, entity=args.wandb_entity, dir=args.log_dir)
+        artifact = wandb.Artifact("finetuned_model", type="model")
+        artifact.add_dir(args.output_dir)
+        run.log_artifact(artifact)
+        wandb.finish()
+
     print("[✔] Model fine-tuning complete.")
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from data_processing import get_split, process_lemon42, process_megavul, process_secvuleval
 from performance import clean_label
 from feedback_loop import feedback_learning_step   # uses (model, tokenizer, code_path, feedback_log=...)
-
+import tempfile
 
 ALLOWED_LABELS = [
     "safe",
@@ -35,6 +35,7 @@ ALLOWED_LABELS = [
 def parse_args():
     p = argparse.ArgumentParser()
 
+    p.add_argument("--artifact", default=None)
     # HF name OR local finetuned folder
     p.add_argument(
         "--model_name",
@@ -326,6 +327,15 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
     os.makedirs(args.tmp_dir, exist_ok=True)
+
+    if args.artifact:
+        print(f"Downloading model artifact...")
+        import wandb
+        temp = tempfile.mkdtemp(prefix="model_artifact_")
+        artifact = wandb.Api().artifact(args.artifact)
+        artifact_dir = artifact.download(root=temp)
+        args.model_name = artifact_dir
+        print(f"Model artifact downloaded to {artifact_dir}")
 
     set_seed(args.seed)
 

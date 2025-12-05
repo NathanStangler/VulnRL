@@ -7,6 +7,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --output=./run_logs/%j.log
 
+ARTIFACT=${ARTIFACT:-""}
 MODEL_NAME=${MODEL_NAME:-"Qwen/Qwen2.5-Coder-1.5B-Instruct"}
 OUTPUT_DIR=${OUTPUT_DIR:-"./finetuned_model"}
 LOG_DIR=${LOG_DIR:-"./logs"}
@@ -46,6 +47,7 @@ fi
 
 if [ "$RUN_MODE" = "rl" ]; then
   python rl_train.py \
+    --artifact "$ARTIFACT" \
     --model_name "$MODEL_NAME" \
     --output_dir "$OUTPUT_DIR" \
     --log_dir "$LOG_DIR" \
@@ -66,6 +68,7 @@ fi
 
 if [ "$RUN_MODE" = "performance" ]; then
   python performance.py \
+    --artifact "$ARTIFACT" \
     --model_dir "$OUTPUT_DIR" \
     --log_dir "$LOG_DIR" \
     --max_new_tokens 1024 \
