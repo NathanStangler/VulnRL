@@ -159,8 +159,8 @@ def main():
         y_pred = []
         for sample in tqdm.tqdm(test_dataset):
             prompt = sample["code"]
-            label = sample["output"].strip().lower()
-            prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens).strip().lower()
+            label = sample["output"]
+            prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens)
             y_true.append(label)
             y_pred.append(prediction)
 
@@ -192,7 +192,7 @@ def main():
         y_pred_chunk = []
         for sample in tqdm.tqdm(test_dataset):
             code = sample["code"]
-            label = sample["output"].strip().lower()
+            label = sample["output"]
             prediction = predict_single_code(code, tokenizer, model, chunk_max_tokens=args.chunk_max_tokens, overlap=args.chunk_overlap, max_new_tokens=args.max_new_tokens)
             y_true_chunk.append(label)
             y_pred_chunk.append(prediction)

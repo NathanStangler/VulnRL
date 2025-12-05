@@ -1,41 +1,42 @@
 from datasets import load_dataset
 
 CWE_DESCRIPTIONS = {
-    "CWE-020": "Improper Input Validation",
-    "CWE-022": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
-    "CWE-078": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
-    "CWE-079": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
-    "CWE-089": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
-    "CWE-094": "Improper Control of Generation of Code ('Code Injection')",
-    "CWE-125": "Out-of-bounds Read",
-    "CWE-190": "Integer Overflow or Wraparound",
-    "CWE-200": "Exposure of Sensitive Information to an Unauthorized Actor",
-    "CWE-269": "Improper Privilege Management",
-    "CWE-287": "Improper Authentication",
-    "CWE-306": "Missing Authentication for Critical Function",
-    "CWE-352": "Cross-Site Request Forgery (CSRF)",
-    "CWE-400": "Uncontrolled Resource Consumption",
-    "CWE-416": "Use After Free",
-    "CWE-434": "Unrestricted Upload of File with Dangerous Type",
-    "CWE-476": "NULL Pointer Dereference",
-    "CWE-502": "Deserialization of Untrusted Data",
-    "CWE-787": "Out-of-bounds Write",
-    "CWE-798": "Use of Hard-coded Credentials",
-    "CWE-862": "Missing Authorization",
-    "CWE-863": "Incorrect Authorization",
-    "CWE-918": "Server-Side Request Forgery (SSRF)",
-    "CWE-119": "Improper Restriction of Operations within the Bounds of a Memory Buffer",
-    "CWE-077": "Improper Neutralization of Special Elements used in a Command ('Command Injection')",
+    "CWE-020": "improper input validation",
+    "CWE-022": "improper limitation of a pathname to a restricted directory ('path traversal')",
+    "CWE-078": "improper neutralization of special elements used in an os command ('os command injection')",
+    "CWE-079": "improper neutralization of input during web page generation ('cross-site scripting')",
+    "CWE-089": "improper neutralization of special elements used in an sql command ('sql injection')",
+    "CWE-094": "improper control of generation of code ('code injection')",
+    "CWE-125": "out-of-bounds read",
+    "CWE-190": "integer overflow or wraparound",
+    "CWE-200": "exposure of sensitive information to an unauthorized actor",
+    "CWE-269": "improper privilege management",
+    "CWE-287": "improper authentication",
+    "CWE-306": "missing authentication for critical function",
+    "CWE-352": "cross-site request forgery (csrf)",
+    "CWE-400": "uncontrolled resource consumption",
+    "CWE-416": "use after free",
+    "CWE-434": "unrestricted upload of file with dangerous type",
+    "CWE-476": "null pointer dereference",
+    "CWE-502": "deserialization of untrusted data",
+    "CWE-787": "out-of-bounds write",
+    "CWE-798": "use of hard-coded credentials",
+    "CWE-862": "missing authorization",
+    "CWE-863": "incorrect authorization",
+    "CWE-918": "server-side request forgery (ssrf)",
+    "CWE-119": "improper restriction of operations within the bounds of a memory buffer",
+    "CWE-077": "improper neutralization of special elements used in a command ('command injection')",
     "safe": "safe"
 }
 
 def clean_cwe(cwe):
-    if cwe.lower() == "safe":
+    if str(cwe).strip().lower() == "safe":
         return "safe"
     s = str(cwe)
     digits = "".join(ch for ch in s if ch.isdigit())
     cwe_id = f"CWE-{digits.zfill(3)}"
-    return CWE_DESCRIPTIONS.get(cwe_id, None)
+    label = CWE_DESCRIPTIONS.get(cwe_id, None)
+    return label if label is not None else None
 
 def process_lemon42():
     dataset = load_dataset("lemon42-ai/Code_Vulnerability_Labeled_Dataset", split="train")
@@ -54,7 +55,7 @@ def process_lemon42():
     def format_instruction(sample):
         return {
             "instruction": "Analyze the following C++ code and classify its vulnerability.",
-            "output": sample["label"].replace("“","'"),
+            "output": sample["label"].replace("“","'").strip().lower(),
             "code": sample["code"]
         }
 
@@ -68,11 +69,10 @@ def process_megavul():
     dataset = dataset.filter(lambda sample: sample["cwe_id"] != "CWE-Other")
     dataset = dataset.filter(lambda sample: sample["vulnerable_code"] is not None)
 
-    allowed_cwes = set(CWE_DESCRIPTIONS.keys())
     def format_instruction(sample):
         output = clean_cwe(sample["cwe_id"])
         return {
-            "instruction": "Analyze the following code and classify its vulnerability.",
+            "instruction": "Analyze the following C++ code and classify its vulnerability.",
             "output": output if output is not None else "unknown",
             "code": sample["vulnerable_code"].replace("\t", "").strip()
         }
@@ -84,12 +84,11 @@ def process_megavul():
 def process_secvuleval():
     dataset = load_dataset("arag0rn/SecVulEval", split="train")
 
-    allowed_cwes = set(CWE_DESCRIPTIONS.keys())
     def format_instruction(sample):
         cwe_id = sample["cwe_list"][0] if sample["is_vulnerable"] else "safe"
         output = clean_cwe(cwe_id)
         return {
-            "instruction": "Analyze the following code and classify its vulnerability.",
+            "instruction": "Analyze the following C++ code and classify its vulnerability.",
             "output": output if output is not None else "unknown",
             "code": sample["func_body"].replace("\t", "").strip()
         }
