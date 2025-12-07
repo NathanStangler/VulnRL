@@ -130,7 +130,8 @@ def main():
         print("[6] Logging model to Weights & Biases...")
         import wandb
         run = wandb.run or wandb.init(project=args.wandb_project, entity=args.wandb_entity, dir=args.log_dir)
-        artifact = wandb.Artifact("finetuned_model", type="model")
+        name = os.path.basename(args.output_dir.rstrip("/"))
+        artifact = wandb.Artifact(name, type="model")
         artifact.add_dir(args.output_dir)
         run.log_artifact(artifact)
         wandb.finish()
