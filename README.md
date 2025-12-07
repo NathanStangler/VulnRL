@@ -51,7 +51,7 @@ Variables:
 
 Finetune custom config:
 ```bash
-sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=3,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=1e-5,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
+sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=3,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=2e-4,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
 ```
 
 RL:
