@@ -1,5 +1,5 @@
 from code_chunker import build_chunks
-from data_processing import process_lemon42, process_megavul, process_secvuleval, get_split
+from data_processing import CWE_DESCRIPTIONS, LABEL_OPTIONS, process_lemon42, process_megavul, process_secvuleval, get_split
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from collections import Counter
@@ -24,7 +24,7 @@ def parse_args():
 
 def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
     messages = [
-        {"role": "system", "content": "Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: Improper Input Validation, Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal'), Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection'), Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting'), Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection'), Improper Control of Generation of Code ('Code Injection'), Out-of-bounds Read, Integer Overflow or Wraparound, Exposure of Sensitive Information to an Unauthorized Actor, Improper Privilege Management, Improper Authentication, Missing Authentication for Critical Function, Cross-Site Request Forgery (CSRF), Uncontrolled Resource Consumption, Use After Free, Unrestricted Upload of File with Dangerous Type, NULL Pointer Dereference, Deserialization of Untrusted Data, Out-of-bounds Write, Use of Hard-coded Credentials, Missing Authorization, Incorrect Authorization, Server-Side Request Forgery (SSRF), Improper Restriction of Operations within the Bounds of a Memory Buffer, Improper Neutralization of Special Elements used in a Command ('Command Injection'), safe. Only respond with the classification."},
+        {"role": "system", "content": f"Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: {LABEL_OPTIONS}. Only respond with the classification."},
         {"role": "user", "content": prompt}
     ]
     text = tokenizer.apply_chat_template(
@@ -59,34 +59,7 @@ def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=1
         most_common = Counter(responses).most_common(1)
         return most_common[0][0] if most_common else "unsafe"
 
-ALLOWED_LABELS = [
-    "improper input validation",
-    "improper limitation of a pathname to a restricted directory ('path traversal')",
-    "improper neutralization of special elements used in an os command ('os command injection')",
-    "improper neutralization of input during web page generation ('cross-site scripting')",
-    "improper neutralization of special elements used in an sql command ('sql injection')",
-    "improper control of generation of code ('code injection')",
-    "out-of-bounds read",
-    "integer overflow or wraparound",
-    "exposure of sensitive information to an unauthorized actor",
-    "improper privilege management",
-    "improper authentication",
-    "missing authentication for critical function",
-    "cross-site request forgery (csrf)",
-    "uncontrolled resource consumption",
-    "use after free",
-    "unrestricted upload of file with dangerous type",
-    "null pointer dereference",
-    "deserialization of untrusted data",
-    "out-of-bounds write",
-    "use of hard-coded credentials",
-    "missing authorization",
-    "incorrect authorization",
-    "server-side request forgery (ssrf)",
-    "improper restriction of operations within the bounds of a memory buffer",
-    "improper neutralization of special elements used in a command ('command injection')",
-    "safe"
-]
+ALLOWED_LABELS = list(CWE_DESCRIPTIONS.values())
 
 def clean_label(text):
     s = text.strip().lower()

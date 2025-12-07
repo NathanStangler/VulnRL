@@ -28,6 +28,7 @@ CWE_DESCRIPTIONS = {
     "CWE-077": "improper neutralization of special elements used in a command ('command injection')",
     "safe": "safe"
 }
+LABEL_OPTIONS = ", ".join(CWE_DESCRIPTIONS.values())
 
 def clean_cwe(cwe):
     if str(cwe).strip().lower() == "safe":
@@ -54,14 +55,13 @@ def process_lemon42():
     allowed_labels = set(CWE_DESCRIPTIONS.values())
     def format_instruction(sample):
         return {
-            "instruction": "Analyze the following C++ code and classify its vulnerability.",
             "output": sample["label"].replace("“","'").strip().lower(),
             "code": sample["code"]
         }
 
     dataset = dataset.map(format_instruction)
     dataset = dataset.filter(lambda sample: sample["output"] in allowed_labels)
-    return dataset.select_columns(["instruction", "output", "code"])
+    return dataset.select_columns(["output", "code"])
 
 def process_megavul():
     dataset = load_dataset("hitoshura25/megavul", split="train")
@@ -69,33 +69,35 @@ def process_megavul():
     dataset = dataset.filter(lambda sample: sample["cwe_id"] != "CWE-Other")
     dataset = dataset.filter(lambda sample: sample["vulnerable_code"] is not None)
 
+    allowed_labels = set(CWE_DESCRIPTIONS.values())
     def format_instruction(sample):
         output = clean_cwe(sample["cwe_id"])
         return {
-            "instruction": "Analyze the following C++ code and classify its vulnerability.",
             "output": output if output is not None else "unknown",
             "code": sample["vulnerable_code"].replace("\t", "").strip()
         }
 
     dataset = dataset.map(format_instruction)
     dataset = dataset.filter(lambda sample: sample["output"] != "unknown")
-    return dataset.select_columns(["instruction", "output", "code"])
+    dataset = dataset.filter(lambda sample: sample["output"] in allowed_labels)
+    return dataset.select_columns(["output", "code"])
 
 def process_secvuleval():
     dataset = load_dataset("arag0rn/SecVulEval", split="train")
 
+    allowed_labels = set(CWE_DESCRIPTIONS.values())
     def format_instruction(sample):
         cwe_id = sample["cwe_list"][0] if sample["is_vulnerable"] else "safe"
         output = clean_cwe(cwe_id)
         return {
-            "instruction": "Analyze the following C++ code and classify its vulnerability.",
             "output": output if output is not None else "unknown",
             "code": sample["func_body"].replace("\t", "").strip()
         }
 
     dataset = dataset.map(format_instruction)
     dataset = dataset.filter(lambda sample: sample["output"] != "unknown")
-    return dataset.select_columns(["instruction", "output", "code"])
+    dataset = dataset.filter(lambda sample: sample["output"] in allowed_labels)
+    return dataset.select_columns(["output", "code"])
 
 def get_split(dataset, seed=42):
     split = dataset.train_test_split(test_size=0.2, shuffle=True, seed=seed)
@@ -106,12 +108,47 @@ def get_split(dataset, seed=42):
     test = val_split["test"]
     return train, validation, test
 
-def tokenize_dataset(dataset, tokenizer):
+def tokenize_dataset(dataset, tokenizer, max_length=1024):
     def tokenize(sample):
-        inputs = "Instruction: " + sample["instruction"] + "\n\nCode:\n" + sample["code"] + "\n\nResponse: "
-        targets = sample["output"]
-        tokenized = tokenizer(inputs + targets, truncation=True, max_length=1024, padding="max_length")
-        tokenized["labels"] = tokenized["input_ids"].copy()
-        return tokenized
+        messages = [
+            {"role": "system", "content": f"Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: {LABEL_OPTIONS}. Only respond with the classification."},
+            {"role": "user", "content": sample["code"]}
+        ]
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False
+        )
+
+        prompt_ids = tokenizer(text, add_special_tokens=False)["input_ids"]
+        target_ids = tokenizer(sample["output"], add_special_tokens=False)["input_ids"]
+        if tokenizer.eos_token_id is not None:
+            target_ids = target_ids + [tokenizer.eos_token_id]
+        input_ids = prompt_ids + target_ids
+        if len(input_ids) > max_length:
+            overflow = len(input_ids) - max_length
+            if overflow >= len(prompt_ids):
+                input_ids = input_ids[-max_length:]
+                prompt_len = max(0, len(prompt_ids) - overflow)
+            else:
+                input_ids = input_ids[overflow:]
+                prompt_len = len(prompt_ids) - overflow
+        else:
+            prompt_len = len(prompt_ids)
+
+        attention_mask = [1] * len(input_ids)
+        pad_len = max_length - len(input_ids)
+        if pad_len > 0:
+            input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
+            attention_mask = attention_mask + [0] * pad_len
+
+        labels = [-100] * prompt_len + input_ids[prompt_len:prompt_len + len(target_ids)]
+        labels = labels + [-100] * (max_length - len(labels))
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels
+        }
 
     return dataset.map(tokenize, batched=False)
