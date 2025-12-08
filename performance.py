@@ -59,7 +59,7 @@ def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=1
         most_common = Counter(responses).most_common(1)
         return most_common[0][0] if most_common else "unsafe"
 
-ALLOWED_LABELS = list(CWE_DESCRIPTIONS.values())
+ALLOWED_LABELS = list({v.strip().lower() for v in CWE_DESCRIPTIONS.values()})
 
 def clean_label(text):
     s = text.strip().lower()
@@ -67,7 +67,7 @@ def clean_label(text):
         return s
 
     for label in ALLOWED_LABELS:
-        if label in s:
+        if label in s or s in label:
             return label
 
     for line in s.splitlines():
@@ -75,7 +75,7 @@ def clean_label(text):
         if l in ALLOWED_LABELS:
             return l
         for label in ALLOWED_LABELS:
-            if label in l:
+            if label in l or l in label:
                 return label
 
     close = difflib.get_close_matches(s, ALLOWED_LABELS, n=1, cutoff=0.6)
