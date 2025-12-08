@@ -15,7 +15,7 @@ EPOCHS=${EPOCHS:-1}
 TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-4}
 EVAL_BATCH_SIZE=${EVAL_BATCH_SIZE:-4}
 GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS:-8}
-LR=${LR:-2e-5}
+LR=${LR:-2e-4}
 USE_LORA=${USE_LORA:-"true"}
 LOAD_IN_4BIT=${LOAD_IN_4BIT:-"true"}
 REPORT_TO=${REPORT_TO:-"wandb"}
@@ -69,7 +69,7 @@ fi
 if [ "$RUN_MODE" = "performance" ]; then
   python performance.py \
     --artifact "$ARTIFACT" \
-    --model_dir "$OUTPUT_DIR" \
+    --model_dir "$MODEL_NAME" \
     --log_dir "$LOG_DIR" \
     --max_new_tokens 1024 \
     --chunk_max_tokens 1024 \
