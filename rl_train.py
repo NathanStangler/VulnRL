@@ -13,7 +13,7 @@ from transformers import (
     AutoModelForCausalLM,
     BitsAndBytesConfig,
 )
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, AutoPeftModelForCausalLM
 
 from data_processing import get_split, process_lemon42, process_megavul, process_secvuleval
 from performance import clean_label
@@ -143,11 +143,19 @@ def load_model_and_tokenizer(args):
         bnb_4bit_quant_type="nf4",
     )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_name,
-        quantization_config=quant_config if args.load_in_4bit else None,
-        device_map="auto",
-    )
+    try:
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            args.model_name,
+            quantization_config=quant_config if args.load_in_4bit else None,
+            device_map="auto",
+        )
+    except Exception as e:
+        print(f"PEFT adapters not found, loading base model.")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name,
+            quantization_config=quant_config if args.load_in_4bit else None,
+            device_map="auto",
+        )
 
     if args.use_lora:
         print("[2.1] Preparing LoRA...")

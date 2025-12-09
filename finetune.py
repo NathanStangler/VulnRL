@@ -15,7 +15,7 @@ def parse_args():
     p.add_argument("--train_batch_size", type=int, default=4)
     p.add_argument("--eval_batch_size", type=int, default=4)
     p.add_argument("--gradient_accumulation_steps", type=int, default=8)
-    p.add_argument("--lr", type=float, default=2e-5)
+    p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--use_lora", action="store_true")
     p.add_argument("--lora_r", type=int, default=16)
     p.add_argument("--lora_alpha", type=int, default=32)

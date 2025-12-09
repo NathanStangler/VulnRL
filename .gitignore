@@ -28,6 +28,9 @@ artifacts/
 # Weights
 finetuned_model/
 rl_model/
+DeepSeek25Coder67Instruct/
+Qwen25Coder7Instruct/
+Qwen25Coder15Instruct/
 checkpoints/
 *.pth
 *.pt

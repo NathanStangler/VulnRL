@@ -47,16 +47,25 @@ Variables:
 - LOAD_IN_4BIT: true | false
 - REPORT_TO: wandb | none
 
+Finetuned Artifacts:
+- Qwen/Qwen2.5-Coder-1.5B-Instruct: VulnRL/VulnRL/Qwen25Coder15Instruct:v1
+- deepseek-ai/deepseek-coder-6.7b-instruct: VulnRL/VulnRL/DeepSeekCoder67Instruct:v0
+- Qwen/Qwen2.5-Coder-7B-Instruct: VulnRL/VulnRL/Qwen25Coder7Instruct:v0
+
 ### Examples
 
 Finetune custom config:
 ```bash
-sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=3,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=2e-4,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
+sbatch --export=RUN_MODE=finetune,MODEL_NAME=Qwen/Qwen2.5-Coder-1.5B-Instruct,EPOCHS=5,TRAIN_BATCH_SIZE=8,EVAL_BATCH_SIZE=8,LR=2e-4,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
 ```
 
 RL:
 ```bash
 sbatch --export=RUN_MODE=rl,MODEL_NAME=./finetuned_model,OUTPUT_DIR=./rl_model,EPOCHS=1,TRAIN_BATCH_SIZE=8,MAX_NEW_TOKENS=32,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
+```
+
+```bash
+sbatch --export=RUN_MODE=rl,ARTIFACT=VulnRL/VulnRL/Qwen25Coder15Instruct:v1,OUTPUT_DIR=./rl_model,EPOCHS=1,TRAIN_BATCH_SIZE=8,MAX_NEW_TOKENS=32,USE_LORA=true,LOAD_IN_4BIT=true script.sbatch
 ```
 
 Evaluate model:
@@ -66,7 +75,11 @@ sbatch --export=RUN_MODE=evaluate,MODEL_DIR=./finetuned_model,OUTPUT_DIR=./finet
 
 Performance evaluation:
 ```bash
-sbatch --export=RUN_MODE=performance,MODEL_DIR=./finetuned_model,OUTPUT_DIR=./finetuned_model script.sbatch
+sbatch --export=RUN_MODE=performance,MODEL_NAME=./finetuned_model script.sbatch
+```
+
+```bash
+sbatch --export=RUN_MODE=performance,ARTIFACT=VulnRL/VulnRL/Qwen25Coder15Instruct:v1 script.sbatch
 ```
 
 ### Manage jobs

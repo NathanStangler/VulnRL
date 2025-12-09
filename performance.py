@@ -1,6 +1,7 @@
 from code_chunker import build_chunks
 from data_processing import CWE_DESCRIPTIONS, LABEL_OPTIONS, process_lemon42, process_megavul, process_secvuleval, get_split
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import AutoPeftModelForCausalLM
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from collections import Counter
 import argparse
@@ -119,11 +120,19 @@ def main():
         bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_quant_type="nf4",
     )
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_dir,
-        quantization_config=quantization_config if args.load_in_4bit else None,
-        device_map="auto",
-    )
+    try:
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            args.model_dir,
+            quantization_config=quantization_config if args.load_in_4bit else None,
+            device_map="auto",
+        )
+    except Exception as e:
+        print(f"PEFT adapters not found, loading base model.")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_dir,
+            quantization_config=quantization_config if args.load_in_4bit else None,
+            device_map="auto",
+        )
     model.eval()
 
     def evaluate_dataset(name, test_dataset):
