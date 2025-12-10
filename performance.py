@@ -35,11 +35,13 @@ def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
     )
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=max_new_tokens,
-        do_sample=False
-    )
+    with torch.inference_mode():
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            use_cache=True
+        )
     generated_ids = [
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
@@ -136,38 +138,38 @@ def main():
     model.eval()
 
     def evaluate_dataset(name, test_dataset):
-        print(f"Evaluating truncated predictions for {name}...")
-        y_true = []
-        y_pred = []
-        for sample in tqdm.tqdm(test_dataset):
-            prompt = sample["code"]
-            label = sample["output"]
-            prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens)
-            y_true.append(label)
-            y_pred.append(prediction)
+        #print(f"Evaluating truncated predictions for {name}...")
+        #y_true = []
+        #y_pred = []
+        #for sample in tqdm.tqdm(test_dataset):
+        #    prompt = sample["code"]
+        #    label = sample["output"]
+        #    prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens)
+        #    y_true.append(label)
+        #    y_pred.append(prediction)
 
-        accuracy = accuracy_score(y_true, y_pred)
-        precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
-        recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
-        f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+        #accuracy = accuracy_score(y_true, y_pred)
+        #precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
+        #recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
+        #f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
 
-        print(f"Accuracy: {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1 Score: {f1:.4f}")
+        #print(f"Accuracy: {accuracy:.4f}")
+        #print(f"Precision: {precision:.4f}")
+        #print(f"Recall: {recall:.4f}")
+        #print(f"F1 Score: {f1:.4f}")
 
-        y_true_binary = [to_binary(label) for label in y_true]
-        y_pred_binary = [to_binary(pred) for pred in y_pred]
+        #y_true_binary = [to_binary(label) for label in y_true]
+        #y_pred_binary = [to_binary(pred) for pred in y_pred]
 
-        binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
-        binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-        binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-        binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        #binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
+        #binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        #binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        #binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
 
-        print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
-        print(f"Binary Precision (safe): {binary_precision:.4f}")
-        print(f"Binary Recall (safe): {binary_recall:.4f}")
-        print(f"Binary F1 Score (safe): {binary_f1:.4f}")
+        #print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
+        #print(f"Binary Precision (safe): {binary_precision:.4f}")
+        #print(f"Binary Recall (safe): {binary_recall:.4f}")
+        #print(f"Binary F1 Score (safe): {binary_f1:.4f}")
 
         print(f"Evaluating chunked predictions for {name}...")
         y_true_chunk = []
@@ -204,18 +206,18 @@ def main():
 
         return {
             "test_samples": len(test_dataset),
-            "truncated_metrics": {
-                "accuracy": accuracy,
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-            },
-            "binary_truncated_metrics": {
-                "accuracy": binary_accuracy,
-                "precision": binary_precision,
-                "recall": binary_recall,
-                "f1": binary_f1,
-            },
+            #"truncated_metrics": {
+            #    "accuracy": accuracy,
+            #    "precision": precision,
+            #    "recall": recall,
+            #    "f1": f1,
+            #},
+            #"binary_truncated_metrics": {
+            #    "accuracy": binary_accuracy,
+            #    "precision": binary_precision,
+            #    "recall": binary_recall,
+            #    "f1": binary_f1,
+            #},
             "chunked_metrics": {
                 "accuracy": accuracy_chunk,
                 "precision": precision_chunk,
