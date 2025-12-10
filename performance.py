@@ -41,20 +41,37 @@ def get_predictions(prompts, tokenizer, model, max_new_tokens=64):
         )
         for message in messages
     ]
-    model_inputs = tokenizer(texts, return_tensors="pt", padding=True).to(model.device)
 
-    with torch.inference_mode():
-        generated_ids = model.generate(
-            **model_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            use_cache=True
-        )
-    generated_ids = [
-        output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
+    def process_texts(texts_batch):
+        model_inputs = tokenizer(texts_batch, return_tensors="pt", padding=True).to(model.device)
+        with torch.inference_mode():
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                use_cache=True
+            )
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+        return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
-    outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    try:
+        outputs = process_texts(texts)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            print("OOM during batch inference, falling back to single-sample processing...")
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+            outputs = []
+            for text in texts:
+                outputs.extend(process_texts([text]))
+        else:
+            raise
+
     return [clean_label(output) for output in outputs]
 
 def predict_codes(codes, tokenizer, model, chunk_max_tokens=1024, overlap=128, max_new_tokens=64):
