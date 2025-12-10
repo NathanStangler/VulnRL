@@ -21,19 +21,27 @@ def parse_args():
     p.add_argument("--chunk_max_tokens", type=int, default=1024)
     p.add_argument("--chunk_overlap", type=int, default=128)
     p.add_argument("--load_in_4bit", action="store_true")
+    p.add_argument("--batch_size", type=int, default=8)
     return p.parse_args()
 
-def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
+def get_predictions(prompts, tokenizer, model, max_new_tokens=64):
     messages = [
-        {"role": "system", "content": f"Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: {LABEL_OPTIONS}. Only respond with the classification."},
-        {"role": "user", "content": prompt}
+        [
+            {"role": "system", "content": f"Analyze the following C++ code and classify its vulnerability. Your classification should be one of the following: {LABEL_OPTIONS}. Only respond with the classification."},
+            {"role": "user", "content": prompt}
+        ]
+        for prompt in prompts
     ]
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
-    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+
+    texts = [
+        tokenizer.apply_chat_template(
+            message,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        for message in messages
+    ]
+    model_inputs = tokenizer(texts, return_tensors="pt", padding=True).to(model.device)
 
     with torch.inference_mode():
         generated_ids = model.generate(
@@ -46,21 +54,39 @@ def get_prediction(prompt, tokenizer, model, max_new_tokens=64):
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
 
-    output = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return clean_label(output)
+    outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    return [clean_label(output) for output in outputs]
 
-def predict_single_code(code, tokenizer, model, chunk_max_tokens=1024, overlap=128, max_new_tokens=64):
-    with tempfile.TemporaryDirectory() as directory:
-        with open(os.path.join(directory, "main.cpp"), "w") as f:
-            f.write(code)
-        chunks = build_chunks(directory, tokenizer.encode, max_tokens=chunk_max_tokens, overlap=overlap)
-        responses = []
-        for chunk in chunks:
-            if not chunk["code"]:
-                continue
-            responses.append(get_prediction(chunk["code"], tokenizer, model, max_new_tokens=max_new_tokens))
+def predict_codes(codes, tokenizer, model, chunk_max_tokens=1024, overlap=128, max_new_tokens=64):
+    all_chunk_texts = []
+    chunk_counts = []
+
+    for code in codes:
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, "main.cpp"), "w") as f:
+                f.write(code)
+            chunks = build_chunks(directory, tokenizer.encode, max_tokens=chunk_max_tokens, overlap=overlap)
+            chunk_texts = [chunk["code"] for chunk in chunks if chunk["code"]]
+        chunk_counts.append(len(chunk_texts))
+        all_chunk_texts.extend(chunk_texts)
+
+    if not all_chunk_texts:
+        return ["unsafe"] * len(codes)
+
+    chunk_predictions = get_predictions(all_chunk_texts, tokenizer, model, max_new_tokens=max_new_tokens)
+
+    predictions = []
+    idx = 0
+    for count in chunk_counts:
+        if count == 0:
+            predictions.append("unsafe")
+            continue
+        responses = chunk_predictions[idx : idx + count]
         most_common = Counter(responses).most_common(1)
-        return most_common[0][0] if most_common else "unsafe"
+        predictions.append(most_common[0][0] if most_common else "unsafe")
+        idx += count
+
+    return predictions
 
 ALLOWED_LABELS = list({v.strip().lower() for v in CWE_DESCRIPTIONS.values()})
 
@@ -138,97 +164,53 @@ def main():
     model.eval()
 
     def evaluate_dataset(name, test_dataset):
-        #print(f"Evaluating truncated predictions for {name}...")
-        #y_true = []
-        #y_pred = []
-        #for sample in tqdm.tqdm(test_dataset):
-        #    prompt = sample["code"]
-        #    label = sample["output"]
-        #    prediction = get_prediction(prompt, tokenizer, model, max_new_tokens=args.max_new_tokens)
-        #    y_true.append(label)
-        #    y_pred.append(prediction)
+        print(f"Evaluating predictions for {name}...")
+        y_true = []
+        y_pred = []
+        for start in tqdm.tqdm(range(0, len(test_dataset), args.batch_size)):
+            end = min(start + args.batch_size, len(test_dataset))
+            indices = range(start, end)
+            codes = [test_dataset[i]["code"] for i in indices]
+            labels = [test_dataset[i]["output"] for i in indices]
+            predictions = predict_codes(codes, tokenizer, model, chunk_max_tokens=args.chunk_max_tokens, overlap=args.chunk_overlap, max_new_tokens=args.max_new_tokens)
+            y_true.extend(labels)
+            y_pred.extend(predictions)
 
-        #accuracy = accuracy_score(y_true, y_pred)
-        #precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
-        #recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
-        #f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+        accuracy = accuracy_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
+        recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
+        f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
 
-        #print(f"Accuracy: {accuracy:.4f}")
-        #print(f"Precision: {precision:.4f}")
-        #print(f"Recall: {recall:.4f}")
-        #print(f"F1 Score: {f1:.4f}")
+        print(f"Accuracy: {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"F1 Score: {f1:.4f}")
 
-        #y_true_binary = [to_binary(label) for label in y_true]
-        #y_pred_binary = [to_binary(pred) for pred in y_pred]
+        y_true_binary = [to_binary(label) for label in y_true]
+        y_pred_binary = [to_binary(pred) for pred in y_pred]
+        binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
+        binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
+        binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
 
-        #binary_accuracy = accuracy_score(y_true_binary, y_pred_binary)
-        #binary_precision = precision_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-        #binary_recall = recall_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-        #binary_f1 = f1_score(y_true_binary, y_pred_binary, pos_label="safe", zero_division=0)
-
-        #print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
-        #print(f"Binary Precision (safe): {binary_precision:.4f}")
-        #print(f"Binary Recall (safe): {binary_recall:.4f}")
-        #print(f"Binary F1 Score (safe): {binary_f1:.4f}")
-
-        print(f"Evaluating chunked predictions for {name}...")
-        y_true_chunk = []
-        y_pred_chunk = []
-        for sample in tqdm.tqdm(test_dataset):
-            code = sample["code"]
-            label = sample["output"]
-            prediction = predict_single_code(code, tokenizer, model, chunk_max_tokens=args.chunk_max_tokens, overlap=args.chunk_overlap, max_new_tokens=args.max_new_tokens)
-            y_true_chunk.append(label)
-            y_pred_chunk.append(prediction)
-
-        accuracy_chunk = accuracy_score(y_true_chunk, y_pred_chunk)
-        precision_chunk = precision_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
-        recall_chunk = recall_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
-        f1_chunk = f1_score(y_true_chunk, y_pred_chunk, average="weighted", zero_division=0)
-
-        print(f"Chunked Accuracy: {accuracy_chunk:.4f}")
-        print(f"Chunked Precision: {precision_chunk:.4f}")
-        print(f"Chunked Recall: {recall_chunk:.4f}")
-        print(f"Chunked F1 Score: {f1_chunk:.4f}")
-
-        y_true_chunk_binary = [to_binary(label) for label in y_true_chunk]
-        y_pred_chunk_binary = [to_binary(pred) for pred in y_pred_chunk]
-
-        binary_accuracy_chunk = accuracy_score(y_true_chunk_binary, y_pred_chunk_binary)
-        binary_precision_chunk = precision_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
-        binary_recall_chunk = recall_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
-        binary_f1_chunk = f1_score(y_true_chunk_binary, y_pred_chunk_binary, pos_label="safe", zero_division=0)
-
-        print(f"Chunked Binary Accuracy (safe/unsafe): {binary_accuracy_chunk:.4f}")
-        print(f"Chunked Binary Precision (safe): {binary_precision_chunk:.4f}")
-        print(f"Chunked Binary Recall (safe): {binary_recall_chunk:.4f}")
-        print(f"Chunked Binary F1 Score (safe): {binary_f1_chunk:.4f}")
+        print(f"Binary Accuracy (safe/unsafe): {binary_accuracy:.4f}")
+        print(f"Binary Precision (safe): {binary_precision:.4f}")
+        print(f"Binary Recall (safe): {binary_recall:.4f}")
+        print(f"Binary F1 Score (safe): {binary_f1:.4f}")
 
         return {
             "test_samples": len(test_dataset),
-            #"truncated_metrics": {
-            #    "accuracy": accuracy,
-            #    "precision": precision,
-            #    "recall": recall,
-            #    "f1": f1,
-            #},
-            #"binary_truncated_metrics": {
-            #    "accuracy": binary_accuracy,
-            #    "precision": binary_precision,
-            #    "recall": binary_recall,
-            #    "f1": binary_f1,
-            #},
-            "chunked_metrics": {
-                "accuracy": accuracy_chunk,
-                "precision": precision_chunk,
-                "recall": recall_chunk,
-                "f1": f1_chunk,
+            "metrics": {
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
             },
-            "binary_chunked_metrics": {
-                "accuracy": binary_accuracy_chunk,
-                "precision": binary_precision_chunk,
-                "recall": binary_recall_chunk,
-                "f1": binary_f1_chunk,
+            "binary_metrics": {
+                "accuracy": binary_accuracy,
+                "precision": binary_precision,
+                "recall": binary_recall,
+                "f1": binary_f1,
             }
         }
 

@@ -75,11 +75,11 @@ sbatch --export=RUN_MODE=evaluate,MODEL_DIR=./finetuned_model,OUTPUT_DIR=./finet
 
 Performance evaluation:
 ```bash
-sbatch --export=RUN_MODE=performance,MODEL_NAME=./finetuned_model script.sbatch
+sbatch --export=RUN_MODE=performance,MODEL_NAME=./finetuned_model,EVAL_BATCH_SIZE=8 script.sbatch
 ```
 
 ```bash
-sbatch --export=RUN_MODE=performance,ARTIFACT=VulnRL/VulnRL/Qwen25Coder15Instruct:v1 script.sbatch
+sbatch --export=RUN_MODE=performance,ARTIFACT=VulnRL/VulnRL/Qwen25Coder15Instruct:v1,EVAL_BATCH_SIZE=8 script.sbatch
 ```
 
 ### Manage jobs

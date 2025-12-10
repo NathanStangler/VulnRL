@@ -12,8 +12,8 @@ MODEL_NAME=${MODEL_NAME:-"Qwen/Qwen2.5-Coder-1.5B-Instruct"}
 OUTPUT_DIR=${OUTPUT_DIR:-"./finetuned_model"}
 LOG_DIR=${LOG_DIR:-"./logs"}
 EPOCHS=${EPOCHS:-1}
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-4}
-EVAL_BATCH_SIZE=${EVAL_BATCH_SIZE:-4}
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-8}
+EVAL_BATCH_SIZE=${EVAL_BATCH_SIZE:-8}
 GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS:-8}
 LR=${LR:-2e-4}
 USE_LORA=${USE_LORA:-"true"}
@@ -74,5 +74,6 @@ if [ "$RUN_MODE" = "performance" ]; then
     --max_new_tokens 1024 \
     --chunk_max_tokens 1024 \
     --chunk_overlap 128 \
-    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit )
+    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit ) \
+    --batch_size "$EVAL_BATCH_SIZE"
 fi
