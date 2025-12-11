@@ -1,14 +1,23 @@
-# api.py
 from fastapi import FastAPI, UploadFile, Query
-from pydantic import BaseModel
-from code_evaluator import CodeEvaluator
+from fastapi.responses import HTMLResponse
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from performance import get_prediction  # from your evaluator file
+from code_evaluator import CodeEvaluator
+from performance import get_prediction
 import tempfile, shutil, os
 
 app = FastAPI(title="Vulnerability Detection API")
 
-# List of allowed models
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 AVAILABLE_MODELS = {
     "phi-2": "microsoft/phi-2",
     "qwen": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
@@ -16,10 +25,10 @@ AVAILABLE_MODELS = {
     "rl": "./rl_model"
 }
 
-loaded_models = {}  # cache
+loaded_models = {}
+
 
 def load_model(model_name: str):
-    """Lazy-load model into cache."""
     if model_name not in loaded_models:
         print(f"[API] Loading model: {model_name}")
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
@@ -31,21 +40,18 @@ def load_model(model_name: str):
 
 @app.get("/models")
 def list_models():
-    """Return the available models the user can choose from."""
     return {"available_models": AVAILABLE_MODELS}
 
 
 @app.post("/analyze/")
 async def analyze_code(
     file: UploadFile,
-    model_key: str = Query("sft", description="Which model to use for vulnerability classification.")
+    model_key: str = Query("sft", description="Which model to use.")
 ):
     if model_key not in AVAILABLE_MODELS:
         return {"error": f"Model '{model_key}' not available."}
 
-    # Load model on demand
-    model_path = AVAILABLE_MODELS[model_key]
-    tokenizer, model = load_model(model_path)
+    tokenizer, model = load_model(AVAILABLE_MODELS[model_key])
     evaluator = CodeEvaluator()
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -53,20 +59,12 @@ async def analyze_code(
         with open(path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # 1. Run compiler + sanitizer analysis
         result = evaluator.evaluate_code(tmpdir)
 
-        # 2. Read code text for ML analysis
         with open(path, "r") as f:
             code_text = f.read()
 
-        # 3. ML vulnerability classification
-        prediction = get_prediction(
-            code_text,
-            tokenizer=tokenizer,
-            model=model,
-            max_new_tokens=32
-        )
+        prediction = get_prediction(code_text, tokenizer=tokenizer, model=model)
 
         return {
             "model_used": model_key,
@@ -78,6 +76,13 @@ async def analyze_code(
                 "ubsan_issue": result["run"]["undefined_behavior_sanitizer_issue"]
             }
         }
+
+
+@app.get("/ui.html", response_class=HTMLResponse)
+def serve_ui():
+    path = os.path.join(os.path.dirname(__file__), "ui.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 if __name__ == "__main__":
