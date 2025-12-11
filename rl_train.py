@@ -31,7 +31,6 @@ ALLOWED_LABELS = [
 ]
 
 
-
 def parse_args():
     p = argparse.ArgumentParser()
 
@@ -72,14 +71,12 @@ def parse_args():
         choices=["lemon42", "megavul", "secvuleval"],
     )
 
-
     p.add_argument(
         "--compiler_weight",
         type=float,
         default=0.7,
         help="Weight for compiler-based reward; 1 - this is classification reward weight.",
     )
-
 
     return p.parse_args()
 
@@ -106,7 +103,6 @@ def build_messages(code: str) -> List[Dict[str, str]]:
         },
         {"role": "user", "content": code},
     ]
-
 
 
 def build_prompt(tokenizer, code: str) -> str:
@@ -213,13 +209,12 @@ def write_temp_code_dirs(codes, tmp_root):
     return paths
 
 
-
 def rl_step(model, tokenizer, batch, args, baseline):
     """
     RL step:
 
     - Generate a classification from the model (actions).
-    - For each code snippet, write it to a temporary .cpp file.
+    - For each code snippet, write it to a temporary .cpp file (inside its own folder).
     - Call feedback_learning_step(...) to get a compiler-based reward.
     - Compute a label-accuracy reward and mix it with the compiler reward.
     - Use REINFORCE with a moving baseline on generated token log-probs.
@@ -248,9 +243,8 @@ def rl_step(model, tokenizer, batch, args, baseline):
 
     pred_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
 
-    # 2) Compiler-based rewards
+    # 2) Compiler-based rewards (directories, not single files)
     code_paths = write_temp_code_dirs(codes, args.tmp_dir)
-
 
     compiler_rewards_list = []
     for code_path in code_paths:
@@ -327,7 +321,6 @@ def rl_step(model, tokenizer, batch, args, baseline):
     }
 
     return loss, new_baseline, stats
-
 
 
 def main():
