@@ -18,7 +18,7 @@ sudo apt update && sudo apt install -y clang clang-tidy lld clang-tools
 
 ## MSI
 
-### Setting resouces
+### Setting resources
 Modify in script.sbatch:
 ```
 #SBATCH --gres=gpu:a100:1
