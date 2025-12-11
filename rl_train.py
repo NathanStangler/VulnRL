@@ -101,9 +101,6 @@ def build_training_dataset(tokenizer, args):
 
     dataset = dataset.map(add_prompt)
     dataset = dataset.select_columns(["prompt", "code", "label"])
-
-    dataset = dataset.select(range(25))
-
     print(f"Combined - Validation: {len(dataset)}")
     return dataset
 
