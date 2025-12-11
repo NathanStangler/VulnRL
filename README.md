@@ -95,6 +95,14 @@ Cancel queued job
 ```bash
 scancel <JOBID>
 ```
+## Web Application
+
+Run:
+```bash
+uvicorn api:app --reload --host 0.0.0.0 --port 8080
+```
+Then go to:
+http://localhost:8080/ui.html
 
 ## API Server
 
