@@ -9,5 +9,6 @@ torch
 transformers
 tree_sitter
 tree_sitter_language_pack
+trl
 tqdm
 wandb

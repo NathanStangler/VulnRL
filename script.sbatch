@@ -4,7 +4,7 @@
 #SBATCH -p msigpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=20G
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --output=./run_logs/%j.log
 
 ARTIFACT=${ARTIFACT:-""}
@@ -55,7 +55,8 @@ if [ "$RUN_MODE" = "rl" ]; then
     --train_batch_size "$TRAIN_BATCH_SIZE" \
     --max_new_tokens "${MAX_NEW_TOKENS:-32}" \
     $( [ "$USE_LORA" = "true" ] && echo --use_lora ) \
-    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit )
+    $( [ "$LOAD_IN_4BIT" = "true" ] && echo --load_in_4bit ) \
+    --report_to "$REPORT_TO"
 fi
 
 if [ "$RUN_MODE" = "evaluate" ]; then

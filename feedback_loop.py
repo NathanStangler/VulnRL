@@ -129,12 +129,7 @@ def analyze_feedback(result: Dict[str, Any], code_path: str, feedback_log: str) 
     return float(reward)
 
 
-def feedback_learning_step(model, tokenizer, code_path, feedback_log: str = "feedback_logs.jsonl") -> float:
-    """Run one evaluation + reward-shaping step.
-
-    `model` and `tokenizer` are currently unused here but are kept in the
-    signature so this function can evolve without breaking callers.
-    """
+def feedback_learning_step(code_path, feedback_log: str = "feedback_logs.jsonl") -> float:
     evaluator = CodeEvaluator()
     result = evaluator.evaluate_code(code_path)
 
