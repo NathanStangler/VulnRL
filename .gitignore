@@ -31,6 +31,9 @@ rl_model/
 DeepSeekCoder67Instruct/
 Qwen25Coder7Instruct/
 Qwen25Coder15Instruct/
+DeepSeekCoder67InstructRL/
+Qwen25Coder7InstructRL/
+Qwen25Coder15InstructRL/
 checkpoints/
 *.pth
 *.pt
