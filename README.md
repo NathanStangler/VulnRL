@@ -47,10 +47,16 @@ Variables:
 - LOAD_IN_4BIT: true | false
 - REPORT_TO: wandb | none
 
-Finetuned Artifacts:
-- Qwen/Qwen2.5-Coder-1.5B-Instruct: VulnRL/VulnRL/Qwen25Coder15Instruct:v1
-- deepseek-ai/deepseek-coder-6.7b-instruct: VulnRL/VulnRL/DeepSeekCoder67Instruct:v0
-- Qwen/Qwen2.5-Coder-7B-Instruct: VulnRL/VulnRL/Qwen25Coder7Instruct:v0
+Artifacts:
+- Qwen/Qwen2.5-Coder-1.5B-Instruct:
+  - Finetuned: VulnRL/VulnRL/Qwen25Coder15Instruct:v1
+  - RL: VulnRL/VulnRL/Qwen25Coder15InstructRL:v0
+- deepseek-ai/deepseek-coder-6.7b-instruct:
+  - Finetuned: VulnRL/VulnRL/DeepSeekCoder67Instruct:v0
+  - RL: VulnRL/VulnRL/DeepSeekCoder67InstructRL:v0
+- Qwen/Qwen2.5-Coder-7B-Instruct:
+  - Finetuned: VulnRL/VulnRL/Qwen25Coder7Instruct:v0
+  - RL: VulnRL/VulnRL/Qwen25Coder7InstructRL:v0
 
 ### Examples
 
