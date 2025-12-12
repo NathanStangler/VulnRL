@@ -4,7 +4,7 @@
 #SBATCH -p msigpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=20G
-#SBATCH --time=2:00:00
+#SBATCH --time=1:00:00
 #SBATCH --output=./run_logs/%j.log
 
 ARTIFACT=${ARTIFACT:-""}

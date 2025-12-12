@@ -108,6 +108,10 @@ def main():
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
+    if args.report_to == "wandb":
+        os.environ["WANDB_ENTITY"] = args.wandb_entity
+        os.environ["WANDB_PROJECT"] = args.wandb_project
+        os.environ["WANDB_LOG_MODEL"] = "end"
 
     if args.artifact:
         print("Downloading model artifact...")
